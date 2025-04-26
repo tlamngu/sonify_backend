@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music API Interface</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Music API Interface - Sonify Music.</h1>
+
+        <div class="auth-section">
+            <label for="authToken">Bearer Token:</label>
+            <input type="text" id="authToken" placeholder="Paste Bearer token here">
+        </div>
+
+        <div class="tabs">
+            <button class="tab-link active" data-tab="uploadTab">Upload</button>
+            <button class="tab-link" data-tab="detailsTab">Details</button>
+            <button class="tab-link" data-tab="streamTab">Stream</button>
+            <button class="tab-link" data-tab="updateTab">Update</button>
+            <button class="tab-link" data-tab="deleteTab">Delete</button>
+            <button class="tab-link" data-tab="listTab">List New</button>
+            <button class="tab-link" data-tab="searchTab">Search</button>
+        </div>
+
+        <div id="tabContent" class="tab-content-wrapper">
+            <!-- Upload Tab -->
+            <div id="uploadTab" class="tab-pane active">
+                <h2>Upload Music</h2>
+                <form id="uploadForm" class="api-form">
+                    <div class="form-grid">
+                        <label for="audioFile">Audio File:</label>
+                        <input type="file" id="audioFile" name="audioFile" accept="audio/*" required>
+
+                        <label for="uploadTitle">Title:</label>
+                        <input type="text" id="uploadTitle" name="title" required>
+
+                        <label for="uploadCollaborators">Collaborators (JSON Array):</label>
+                        <textarea id="uploadCollaborators" name="collaborators" placeholder='[{"name": "Artist Name", "role": "Producer"}]'></textarea>
+
+                        <label for="uploadAlbumId">Album ID (Optional):</label>
+                        <input type="text" id="uploadAlbumId" name="album_id">
+
+                        <label for="uploadGenreId">Genre IDs (Comma-sep, Optional):</label>
+                        <input type="text" id="uploadGenreId" name="genre_id_input" placeholder="id1,id2,id3">
+
+                        <label for="uploadReleaseDate">Release Date (Optional):</label>
+                        <input type="date" id="uploadReleaseDate" name="release_date">
+
+                        <label for="uploadCredits">Credits (JSON Object, Optional):</label>
+                        <textarea id="uploadCredits" name="credits" placeholder='{"producer": "Name", "writer": "Another"}'></textarea>
+                    </div>
+                    <button type="submit">Upload Music</button>
+                </form>
+                <div class="output-container">
+                    <div class="status" id="uploadStatus"></div>
+                    <pre id="uploadResult"></pre>
+                </div>
+            </div>
+
+            <!-- Details Tab -->
+            <div id="detailsTab" class="tab-pane">
+                <h2>Get Music Details</h2>
+                 <div class="api-form">
+                     <div class="form-grid single-col">
+                         <label for="getMusicId">Music ID:</label>
+                         <input type="text" id="getMusicId" placeholder="Enter Music ObjectId">
+                     </div>
+                     <button id="getMusicBtn">Get Details</button>
+                 </div>
+                <div class="output-container">
+                    <div class="status" id="getStatus"></div>
+                    <pre id="getResult"></pre>
+                </div>
+            </div>
+
+            <!-- Stream Tab -->
+            <div id="streamTab" class="tab-pane">
+                <h2>Stream Music</h2>
+                <div class="api-form">
+                     <div class="form-grid single-col">
+                        <label for="streamMusicId">Music ID:</label>
+                        <input type="text" id="streamMusicId" placeholder="Enter Music ObjectId">
+                    </div>
+                    <button id="streamMusicBtn">Load Stream</button>
+                </div>
+                 <div class="output-container">
+                     <div class="status" id="streamStatus"></div>
+                     <audio id="audioPlayer" controls preload="metadata">
+                         Your browser does not support the audio element.
+                     </audio>
+                 </div>
+            </div>
+
+            <!-- Update Tab -->
+            <div id="updateTab" class="tab-pane">
+                 <h2>Update Music</h2>
+                 <div class="api-form">
+                    <p>First, fetch the music data to edit:</p>
+                     <div class="form-grid single-col">
+                         <label for="fetchUpdateMusicId">Music ID to Fetch:</label>
+                         <input type="text" id="fetchUpdateMusicId" placeholder="Enter Music ObjectId">
+                     </div>
+                     <button id="fetchMusicDataBtn">Fetch Data for Update</button>
+                 </div>
+
+                 <div class="output-container">
+                    <div class="status" id="fetchUpdateStatus"></div>
+                 </div>
+
+                 <form id="updateForm" class="api-form" style="display: none;">
+                    <input type="hidden" id="updateMusicIdActual" name="updateMusicIdActual">
+                     <div class="form-grid">
+                        <label for="updateTitle">Title:</label>
+                        <input type="text" id="updateTitle" name="title">
+
+                        <label for="updateCollaborators">Collaborators (JSON Array):</label>
+                        <textarea id="updateCollaborators" name="collaborators"></textarea>
+
+                        <label for="updateAlbumId">Album ID:</label>
+                        <input type="text" id="updateAlbumId" name="album_id" placeholder="Leave empty to remove">
+
+                        <label for="updateGenreId">Genre IDs (Comma-sep):</label>
+                        <input type="text" id="updateGenreId" name="genre_id_input" placeholder="id1,id2">
+
+                        <label for="updateReleaseDate">Release Date:</label>
+                        <input type="date" id="updateReleaseDate" name="release_date">
+
+                        <label for="updateCredits">Credits (JSON Object):</label>
+                        <textarea id="updateCredits" name="credits"></textarea>
+                    </div>
+                    <button type="submit">Save Changes</button>
+                 </form>
+
+                 <div class="output-container">
+                    <div class="status" id="updateStatus"></div>
+                    <pre id="updateResult"></pre>
+                 </div>
+            </div>
+
+            <!-- Delete Tab -->
+            <div id="deleteTab" class="tab-pane">
+                <h2>Delete Music (Soft)</h2>
+                <div class="api-form">
+                    <div class="form-grid single-col">
+                        <label for="deleteMusicId">Music ID:</label>
+                        <input type="text" id="deleteMusicId" placeholder="Enter Music ObjectId">
+                    </div>
+                    <button id="deleteMusicBtn">Delete Music</button>
+                </div>
+                <div class="output-container">
+                    <div class="status" id="deleteStatus"></div>
+                    <pre id="deleteResult"></pre>
+                </div>
+            </div>
+
+            <!-- List New Tab -->
+            <div id="listTab" class="tab-pane">
+                 <h2>List New Music</h2>
+                 <div class="api-form">
+                     <div class="form-grid single-col">
+                         <label for="listNewLimit">Limit:</label>
+                         <input type="number" id="listNewLimit" value="12" min="1" max="100">
+                     </div>
+                     <button id="listNewBtn">List New Music</button>
+                 </div>
+                 <div class="output-container">
+                     <div class="status" id="listNewStatus"></div>
+                     <pre id="listNewResult"></pre>
+                 </div>
+            </div>
+
+            <!-- Search Tab -->
+            <div id="searchTab" class="tab-pane">
+                <h2>Search Music</h2>
+                <form id="searchForm" class="api-form">
+                    <div class="form-grid">
+                        <label for="searchQuery">Keyword (Title/Artist):</label>
+                        <input type="text" id="searchQuery" name="q">
+
+                        <label for="searchArtist">Filter by Artist Name:</label>
+                        <input type="text" id="searchArtist" name="artist">
+
+                        <label for="searchGenre">Filter by Genre ID:</label>
+                        <input type="text" id="searchGenre" name="genre">
+
+                        <label for="searchAlbum">Filter by Album ID:</label>
+                        <input type="text" id="searchAlbum" name="album">
+
+                        <label for="searchLimit">Limit:</label>
+                        <input type="number" id="searchLimit" name="limit" value="10" min="1" max="100">
+
+                        <label for="searchPage">Page:</label>
+                        <input type="number" id="searchPage" name="page" value="1" min="1">
+                    </div>
+                    <button type="submit">Search Music</button>
+                </form>
+                 <div class="output-container">
+                    <div class="status" id="searchStatus"></div>
+                    <pre id="searchResult"></pre>
+                 </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

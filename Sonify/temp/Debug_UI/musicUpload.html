@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Music Upload Test</title>
+  <style>
+    /* Embedded CSS */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+      background-color: #f8f9fa;
+      color: #333;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 30px;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+    h2 {
+      text-align: center;
+      color: #0056b3;
+      margin-bottom: 25px;
+    }
+    label {
+      display: block;
+      margin: 15px 0 5px;
+      font-weight: 600;
+    }
+    input[type="text"],
+    input[type="file"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 15px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      box-sizing: border-box; /* Include padding and border in element's total width/height */
+      font-size: 1rem;
+    }
+    textarea {
+      min-height: 80px;
+      font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; /* Monospace for JSON */
+      resize: vertical;
+    }
+    button {
+      display: block;
+      width: 100%;
+      padding: 12px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      font-weight: bold;
+      transition: background-color 0.2s ease;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 4px;
+      display: none; /* Hidden by default */
+      word-wrap: break-word;
+    }
+    #result.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      display: block;
+    }
+    #result.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
+    pre { /* For displaying JSON nicely */
+      background-color: #eee;
+      padding: 10px;
+      border-radius: 4px;
+      white-space: pre-wrap; /* Wrap long lines */
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <form id="uploadForm">
+      <h2>Music Upload Test</h2>
+
+      <label for="authToken">Authorization Token Value:</label>
+      <input type="text" id="authToken" name="authToken" placeholder="Paste ONLY the token value here (no 'Bearer ' prefix)" required>
+
+      <label for="title">Title:</label>
+      <input type="text" id="title" name="title" placeholder="Enter song title" required>
+
+      <label for="collaborators">Collaborators (JSON Array String):</label>
+      <textarea id="collaborators" name="collaborators" placeholder='Enter as JSON array string, e.g., [{"name": "Artist Name", "role": "Vocals", "user_id": "valid_object_id_here"}, {"name": "Another Name"}]' required></textarea>
+      <!-- Backend needs to JSON.parse() this field -->
+
+      <label for="audioFile">Music File:</label>
+      <input type="file" id="audioFile" name="audioFile" accept="audio/mpeg,audio/ogg,audio/wav" required>
+      <!-- Key name "audioFile" should match multer field name -->
+
+      <button type="submit" id="submitButton">Upload</button>
+    </form>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    // Embedded JavaScript
+    const uploadForm = document.getElementById('uploadForm');
+    const authTokenInput = document.getElementById('authToken');
+    const titleInput = document.getElementById('title');
+    const collaboratorsInput = document.getElementById('collaborators');
+    const audioFileInput = document.getElementById('audioFile');
+    const submitButton = document.getElementById('submitButton');
+    const resultDiv = document.getElementById('result');
+
+    uploadForm.addEventListener('submit', async function (e) {
+      e.preventDefault(); // Prevent default form submission
+
+      const authToken = authTokenInput.value.trim();
+      const title = titleInput.value.trim();
+      const collaboratorsString = collaboratorsInput.value.trim(); // Get the JSON string
+      const audioFile = audioFileInput.files[0];
+
+      // Basic Validations
+      if (!authToken) {
+        displayResult('Please provide the Authorization token value.', true);
+        return;
+      }
+      if (!title) {
+        displayResult('Please provide a Title.', true);
+        return;
+      }
+       if (!collaboratorsString) {
+        displayResult('Please provide Collaborators JSON string (can be "[]" if only uploader).', true);
+        return;
+      }
+       // Validate if the collaborators string is valid JSON array (basic check)
+      try {
+          const parsedCollabs = JSON.parse(collaboratorsString);
+          if (!Array.isArray(parsedCollabs)) {
+              throw new Error('Input is not a JSON array.');
+          }
+      } catch (jsonError) {
+          displayResult(`Invalid Collaborators format. Please enter a valid JSON array string. Error: ${jsonError.message}`, true);
+          return;
+      }
+      if (!audioFile) {
+        displayResult('Please select a music file.', true);
+        return;
+      }
+
+      // Disable button and show loading state
+      submitButton.disabled = true;
+      submitButton.textContent = 'Uploading...';
+      resultDiv.style.display = 'none'; // Hide previous result
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('title', title);
+      // --- IMPORTANT ---
+      // Send collaborators as a string. Backend MUST parse it.
+      formData.append('collaborators', collaboratorsString);
+      // Use the key expected by the backend (e.g., 'audioFile')
+      formData.append('audioFile', audioFile, audioFile.name);
+
+      // Add other optional fields from your schema if needed
+      // formData.append('album_id', 'some_album_id');
+      // formData.append('credits[composer]', 'Some Composer');
+
+      const apiUrl = '/api/v1/music/upload'; // ADJUST THIS URL AS NEEDED
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            // Construct the full Bearer token header
+            'Authorization': `Bearer ${authToken}`
+            // 'Content-Type': 'multipart/form-data' // Browser sets this automatically with boundary for FormData
+          },
+        });
+
+        const responseData = await response.json(); // Try to parse JSON regardless of status for error messages
+
+        if (!response.ok) {
+           // Use error message from server response if available
+          const errorMsg = responseData.message || `Upload failed with status: ${response.status}`;
+          throw new Error(errorMsg);
+        }
+
+        // Handle Success
+        console.log('Upload successful:', responseData);
+        displayResult(`Upload successful! <br> New Music ID: ${responseData.data?._id} <br> Title: ${responseData.data?.title} <br> Artist: ${responseData.data?.primary_artist_name} <br> <pre>${JSON.stringify(responseData.data, null, 2)}</pre>`, false);
+        uploadForm.reset(); // Optionally clear the form on success
+
+      } catch (error) {
+        // Handle Fetch/Network/Application errors
+        console.error('Error during upload:', error);
+        displayResult(`An error occurred: ${error.message}`, true);
+
+      } finally {
+        // Re-enable button
+        submitButton.disabled = false;
+        submitButton.textContent = 'Upload';
+      }
+    });
+
+    function displayResult(message, isError) {
+        resultDiv.innerHTML = message;
+        resultDiv.className = isError ? 'error' : 'success'; // Add appropriate class
+        resultDiv.style.display = 'block'; // Make it visible
+    }
+
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,287 @@
+:root {
+    --bg-primary: #121212;
+    --bg-secondary: #1e1e1e;
+    --bg-tertiary: #2a2a2a;
+    --text-primary: #e0e0e0;
+    --text-secondary: #b3b3b3;
+    --border-color: #444;
+    --accent-color: #0d6efd;
+    --accent-hover: #0b5ed7;
+    --success-color: #198754;
+    --error-color: #dc3545;
+    --input-bg: #333;
+    --input-border: #555;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 20px;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    background-color: var(--bg-secondary);
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+h1 {
+    text-align: center;
+    color: var(--text-primary);
+    margin-bottom: 25px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 15px;
+}
+
+h2 {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-weight: 500;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.auth-section {
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: var(--bg-tertiary);
+    border-radius: 5px;
+    border: 1px solid var(--border-color);
+}
+
+.auth-section label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.tabs {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tab-link {
+    padding: 10px 18px;
+    cursor: pointer;
+    background-color: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin-right: 5px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.tab-link:hover {
+    color: var(--text-primary);
+}
+
+.tab-link.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent-color);
+    font-weight: bold;
+}
+
+.tab-content-wrapper {
+    padding-top: 15px;
+}
+
+.tab-pane {
+    display: none;
+    padding: 20px;
+    background-color: var(--bg-tertiary);
+    border-radius: 5px;
+    border: 1px solid var(--border-color);
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.api-form {
+    margin-bottom: 20px;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr; /* Default to single column for smaller screens */
+    gap: 15px 20px; /* Row gap, Column gap */
+    margin-bottom: 20px;
+}
+
+/* Apply two columns for wider screens */
+@media (min-width: 600px) {
+    .form-grid {
+        grid-template-columns: auto 1fr; /* Label takes auto width, input takes rest */
+        align-items: center; /* Vertically align label and input */
+    }
+     .form-grid.single-col {
+        grid-template-columns: 1fr; /* Force single column if needed */
+     }
+      .form-grid.single-col label {
+        margin-bottom: 5px; /* Add space below label in single col */
+     }
+}
+
+
+label {
+    font-weight: 500;
+    color: var(--text-secondary);
+    grid-column: 1 / 2; /* Place label in the first column */
+}
+
+input[type="text"],
+input[type="date"],
+input[type="number"],
+input[type="file"],
+textarea,
+button {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+input[type="text"],
+input[type="date"],
+input[type="number"],
+textarea {
+     grid-column: 2 / 3; /* Place input in the second column (for 2-col grid) */
+}
+input[type="file"] {
+     grid-column: 2 / 3;
+     padding: 5px; /* Different padding needed for file input */
+}
+.form-grid.single-col input[type="text"],
+.form-grid.single-col input[type="date"],
+.form-grid.single-col input[type="number"],
+.form-grid.single-col textarea,
+.form-grid.single-col input[type="file"] {
+    grid-column: 1 / -1; /* Span full width in single column */
+}
+
+
+textarea {
+    min-height: 80px;
+    resize: vertical;
+    font-family: monospace;
+}
+
+button {
+    background-color: var(--accent-color);
+    color: white;
+    cursor: pointer;
+    border: none;
+    font-weight: bold;
+    transition: background-color 0.2s ease;
+    grid-column: 1 / -1; /* Span full width */
+    margin-top: 10px; /* Add space above button */
+}
+/* Specific button placement if not spanning full */
+.api-form > button:not([type="submit"]) {
+   width: auto; /* Don't force full width */
+   padding: 10px 20px;
+   grid-column: auto; /* Reset grid column */
+}
+
+
+button:hover {
+    background-color: var(--accent-hover);
+}
+
+button:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+}
+
+.output-container {
+    margin-top: 15px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+
+.status {
+    font-style: italic;
+    margin-bottom: 10px;
+    padding: 8px;
+    border-radius: 4px;
+    display: none; /* Hide initially */
+}
+.status.loading {
+    color: var(--text-secondary);
+    background-color: rgba(108, 117, 125, 0.1);
+    display: block;
+}
+.status.error {
+    color: #f8d7da;
+    background-color: rgba(220, 53, 69, 0.2);
+    font-weight: bold;
+    display: block;
+}
+.status.success {
+    color: #d1e7dd;
+    background-color: rgba(25, 135, 84, 0.2);
+    font-weight: bold;
+    display: block;
+}
+
+pre {
+    background-color: var(--bg-primary);
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    max-height: 400px;
+}
+
+audio {
+     width: 100%;
+     margin-top: 10px;
+     background-color: var(--bg-tertiary); /* Match container */
+     border-radius: 5px;
+}
+
+/* Style audio player controls */
+audio::-webkit-media-controls-panel {
+  background-color: var(--bg-tertiary);
+  border-radius: 5px;
+}
+audio::-webkit-media-controls-play-button,
+audio::-webkit-media-controls-volume-slider,
+audio::-webkit-media-controls-mute-button,
+audio::-webkit-media-controls-timeline,
+audio::-webkit-media-controls-current-time-display,
+audio::-webkit-media-controls-time-remaining-display {
+  filter: invert(1) brightness(0.8); /* Adjust controls color for dark bg */
+}
+
+p {
+    margin-bottom: 15px;
+    color: var(--text-secondary);
+}

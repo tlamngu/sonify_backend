@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authenticated Music Streamer (Deep Dark)</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --surface-color: #1c1c1c;
+            --primary-text-color: #e5e5e5;
+            --secondary-text-color: #a0a0a0;
+            --border-color: #333333;
+            --accent-color: #7e57c2; /* Deep Purple Accent */
+            --accent-hover-color: #673ab7;
+            --error-color: #d32f2f; /* Darker Red */
+            --error-text-color: #ffffff;
+            --success-color: var(--accent-color);
+            --success-text-color: #ffffff;
+            --disabled-bg-color: #424242;
+            --disabled-text-color: #757575;
+            --input-bg-color: #2a2a2a;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px;
+            background-color: var(--bg-color); color: var(--primary-text-color); line-height: 1.6;
+        }
+        .container {
+            max-width: 700px; margin: auto; padding: 30px; background: var(--surface-color);
+            border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
+            border: 1px solid var(--border-color);
+        }
+        h2 { text-align: center; color: var(--accent-color); margin-bottom: 25px; font-weight: 600;}
+        label { display: block; margin: 15px 0 5px; font-weight: 600; color: var(--secondary-text-color); }
+        input[type="text"] {
+            width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border-color);
+            border-radius: 4px; box-sizing: border-box; font-size: 1rem;
+            background-color: var(--input-bg-color); color: var(--primary-text-color);
+        }
+        input[type="text"]::placeholder {
+            color: var(--secondary-text-color); opacity: 0.7;
+        }
+        input[type="text"]:focus {
+             outline: none;
+             border-color: var(--accent-color);
+             box-shadow: 0 0 0 2px rgba(126, 87, 194, 0.3); /* Accent focus ring */
+        }
+        button {
+            display: inline-block; padding: 10px 20px; background-color: var(--accent-color);
+            color: var(--primary-text-color); border: none; border-radius: 4px; cursor: pointer;
+            font-size: 1rem; font-weight: bold; transition: background-color 0.2s ease;
+            margin-right: 10px;
+        }
+        button:hover { background-color: var(--accent-hover-color); }
+        button:disabled {
+            background-color: var(--disabled-bg-color); color: var(--disabled-text-color); cursor: not-allowed;
+        }
+        audio {
+            display: block; width: 100%; margin-top: 25px; border: 1px solid var(--border-color);
+            border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(105%) contrast(105%);
+        }
+        #status {
+            margin-top: 20px; padding: 15px; border-radius: 4px; font-size: 0.95rem;
+            display: none; word-wrap: break-word; border: 1px solid transparent;
+        }
+        #status.info { background-color: var(--input-bg-color); color: var(--secondary-text-color); border-color: var(--border-color); display: block; }
+        #status.error { background-color: var(--error-color); color: var(--error-text-color); border-color: var(--error-color); display: block; }
+        #status.success { background-color: var(--success-color); color: var(--success-text-color); border-color: var(--accent-hover-color); display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Authenticated Music Streamer (MSE)</h2>
+
+        <label for="authToken">Authorization Token Value:</label>
+        <input type="text" id="authToken" placeholder="Paste ONLY the token value here" required>
+
+        <label for="musicId">Music ID (MongoDB ObjectId):</label>
+        <input type="text" id="musicId" placeholder="Enter the _id of the music track" required>
+
+        <button type="button" id="loadButton">Load Stream</button>
+
+        <div id="status">Enter Token and Music ID, then click "Load Stream".</div>
+
+        <audio controls id="audioPlayer" preload="metadata">
+            Your browser does not support the audio element or Media Source Extensions.
+        </audio>
+
+    </div>
+
+    <script>
+        function initializeAudioStreamer() {
+            const API_BASE_URL = '/api/v1/music/stream/';
+            const AUDIO_MIME_CODEC = 'audio/mpeg';
+
+            const musicIdInput = document.getElementById('musicId');
+            const authTokenInput = document.getElementById('authToken');
+            const loadButton = document.getElementById('loadButton');
+            const audioPlayer = document.getElementById('audioPlayer');
+            const statusDiv = document.getElementById('status');
+
+            let mediaSource = null;
+            let sourceBuffer = null;
+            let currentObjectUrl = null;
+            let isFetching = false;
+
+            function waitForBufferReady(buffer) {
+                return new Promise((resolve, reject) => {
+                    const checkAndUpdate = () => {
+                        if (!buffer.updating) {
+                            buffer.removeEventListener('updateend', checkAndUpdate);
+                            buffer.removeEventListener('error', onError);
+                            resolve();
+                        }
+                    };
+                    const onError = (e) => {
+                        buffer.removeEventListener('updateend', checkAndUpdate);
+                        buffer.removeEventListener('error', onError);
+                        console.error("SourceBuffer error event while waiting:", e);
+                        reject(new Error("SourceBuffer error while waiting"));
+                    };
+
+                    buffer.addEventListener('updateend', checkAndUpdate);
+                    buffer.addEventListener('error', onError);
+                    checkAndUpdate(); // Initial check
+                });
+            }
+
+            async function handleSourceOpen() {
+                console.log('MediaSource opened.');
+                displayStatus('Media source ready. Fetching audio data...', false, true);
+
+                if (!MediaSource.isTypeSupported(AUDIO_MIME_CODEC)) {
+                    displayStatus(`Error: MIME type "${AUDIO_MIME_CODEC}" is not supported.`, true);
+                    cleanupOnError();
+                    return;
+                }
+
+                try {
+                    sourceBuffer = mediaSource.addSourceBuffer(AUDIO_MIME_CODEC);
+                    console.log('SourceBuffer created for', AUDIO_MIME_CODEC);
+                    setupSourceBufferListeners(sourceBuffer);
+
+                    const musicId = musicIdInput.value.trim();
+                    const authToken = authTokenInput.value.trim();
+                    const streamUrl = `${API_BASE_URL}${musicId}`;
+
+                    const response = await fetch(streamUrl, {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+
+                    if (!response.ok) {
+                        let errorDetail = `HTTP status ${response.status}`;
+                        try {
+                            const errorJson = await response.json();
+                            errorDetail = `${response.status} - ${errorJson.message || 'Unknown server error'}`;
+                        } catch (e) { }
+                        throw new Error(`Failed to fetch audio stream: ${errorDetail}`);
+                    }
+
+                    if (!response.body) {
+                        throw new Error('Response body is null, cannot read stream.');
+                    }
+
+                    displayStatus('Streaming audio data...', false, true);
+                    await pumpStreamToBuffer(response.body.getReader(), sourceBuffer);
+
+                } catch (error) {
+                    console.error('Error during streaming setup or fetch:', error);
+                    displayStatus(`Error: ${error.message}`, true);
+                    cleanupOnError();
+                }
+            }
+
+             async function pumpStreamToBuffer(reader, buffer) {
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+
+                        if (done) {
+                            console.log('Stream finished.');
+                            await waitForBufferReady(buffer); // Wait for last append to finish
+                            displayStatus('Stream finished. Ready to play entire track.', false, true);
+                            endMediaStream();
+                            break;
+                        }
+
+                        await waitForBufferReady(buffer);
+
+                        try {
+                             console.log(`Appending chunk of size ${value.byteLength}`);
+                             buffer.appendBuffer(value);
+                        } catch (appendError) {
+                             console.error('Error directly during appendBuffer:', appendError);
+                             displayStatus(`Streaming error during buffer append: ${appendError.message}`, true);
+                             break;
+                        }
+                    }
+                } catch (error) {
+                     console.error('Error during stream pumping loop:', error);
+                     displayStatus(`Streaming error: ${error.message}`, true);
+                } finally {
+                     isFetching = false;
+                     resetLoadButton();
+                     console.log("Pump loop finished or exited.");
+                }
+            }
+
+            function endMediaStream() {
+                if (mediaSource && mediaSource.readyState === 'open') {
+                    try {
+                        if (!sourceBuffer.updating) {
+                             mediaSource.endOfStream();
+                             console.log('Called endOfStream()');
+                        } else {
+                            console.warn("Buffer still updating, delaying endOfStream call");
+                             sourceBuffer.addEventListener('updateend', () => {
+                                 if (mediaSource.readyState === 'open') {
+                                     mediaSource.endOfStream();
+                                     console.log('Called endOfStream() after buffer update');
+                                 }
+                             }, { once: true });
+                        }
+                    } catch (e) {
+                        console.error("Error calling endOfStream:", e);
+                    }
+                }
+            }
+
+            function handleLoadButtonClick() {
+                if (isFetching) {
+                    console.warn("Fetch already in progress.");
+                    return;
+                }
+
+                const musicId = musicIdInput.value.trim();
+                const authToken = authTokenInput.value.trim();
+
+                resetPlayerAndState();
+
+                if (!musicId) {
+                    displayStatus('Please enter a Music ID.', true); return;
+                }
+                if (!authToken) {
+                    displayStatus('Please enter the Authorization token value.', true); return;
+                }
+                if (!window.MediaSource) {
+                    displayStatus('Browser lacks Media Source Extensions support.', true); return;
+                }
+
+                isFetching = true;
+                loadButton.disabled = true;
+                loadButton.textContent = 'Loading...';
+                displayStatus('Initializing stream...', false, true);
+
+                mediaSource = new MediaSource();
+                currentObjectUrl = URL.createObjectURL(mediaSource);
+                audioPlayer.src = currentObjectUrl;
+
+                mediaSource.addEventListener('sourceopen', handleSourceOpen);
+                mediaSource.addEventListener('sourceended', () => console.log('MediaSource ended.'));
+                mediaSource.addEventListener('sourceclose', () => console.log('MediaSource closed.'));
+                mediaSource.addEventListener('error', (e) => {
+                     console.error('MediaSource error event:', e);
+                     displayStatus('A MediaSource error occurred.', true);
+                     cleanupOnError();
+                });
+            }
+
+            function setupSourceBufferListeners(buffer) {
+                // 'updateend' and 'error' handled by waitForBufferReady and pumpStreamToBuffer
+                buffer.addEventListener('abort', () => console.warn('SourceBuffer aborted.'));
+            }
+
+            function setupAudioPlayerListeners() {
+                audioPlayer.addEventListener('error', (e) => {
+                    console.error('Audio Player Error Event:', e, e.target.error);
+                    if (!statusDiv.classList.contains('error') && e.target.error) {
+                        displayStatus(`Audio player error: ${e.target.error?.message || 'Unknown player error'} (Code: ${e.target.error?.code})`, true);
+                    } else if (!statusDiv.classList.contains('error')) {
+                         displayStatus('An unknown audio player error occurred.', true);
+                    }
+                });
+                audioPlayer.addEventListener('loadedmetadata', () => displayStatus('Audio metadata loaded. Ready.', false, true));
+                audioPlayer.addEventListener('canplay', () => displayStatus('Audio ready to play.', false, true));
+                audioPlayer.addEventListener('waiting', () => displayStatus('Buffering...', false, true));
+                audioPlayer.addEventListener('playing', () => displayStatus('Playing...', false, false));
+                audioPlayer.addEventListener('ended', () => displayStatus('Playback finished.', false, true));
+                audioPlayer.addEventListener('emptied', () => console.log('Audio player emptied.'));
+            }
+
+            function displayStatus(message, isError = false, isInfo = false) {
+                statusDiv.textContent = message;
+                statusDiv.className = isError ? 'error' : (isInfo ? 'info' : 'success');
+                statusDiv.style.display = 'block';
+            }
+
+            function resetPlayerAndState() {
+                statusDiv.style.display = 'none';
+                statusDiv.className = '';
+
+                if (audioPlayer.src && currentObjectUrl) {
+                    URL.revokeObjectURL(currentObjectUrl);
+                    console.log('Revoked previous Object URL.');
+                }
+                if (!audioPlayer.paused) audioPlayer.pause();
+                audioPlayer.removeAttribute('src');
+                audioPlayer.load();
+
+                // Explicitly remove listeners if mediaSource exists
+                 if (mediaSource) {
+                    // Attempt to remove listeners - needs reference or different approach
+                    // mediaSource.removeEventListener('sourceopen', handleSourceOpen); // Careful if handleSourceOpen is bound
+                 }
+
+                mediaSource = null;
+                sourceBuffer = null; // SourceBuffer listeners are implicitly removed when MS is GC'd
+                currentObjectUrl = null;
+                isFetching = false;
+
+                resetLoadButton();
+                console.log('Player and state reset.');
+            }
+
+             function cleanupOnError() {
+                 console.warn("Attempting cleanup due to error...");
+                 if (mediaSource && mediaSource.readyState === 'open') {
+                     try {
+                        // Ensure buffer is not updating before trying remove/endOfStream
+                        const cleanupAction = () => {
+                             try {
+                                 if (sourceBuffer && mediaSource.sourceBuffers.length > 0) {
+                                     console.log("Removing source buffer during cleanup...");
+                                     mediaSource.removeSourceBuffer(sourceBuffer);
+                                 }
+                                 if (mediaSource.readyState === 'open') {
+                                     console.log("Calling endOfStream due to error...");
+                                    mediaSource.endOfStream('network');
+                                 }
+                             } catch (innerError) {
+                                console.warn("Inner error during MSE cleanup:", innerError);
+                             } finally {
+                                resetPlayerAndState(); // Reset state after attempting MSE cleanup
+                             }
+                        };
+
+                        if (sourceBuffer && sourceBuffer.updating) {
+                             console.warn("Buffer updating during cleanup, delaying action...");
+                             sourceBuffer.addEventListener('updateend', cleanupAction, { once: true });
+                             sourceBuffer.addEventListener('error', cleanupAction, { once: true }); // Also cleanup if error occurs during wait
+                        } else {
+                             cleanupAction(); // Buffer not updating, proceed immediately
+                        }
+
+                     } catch (e) {
+                         console.warn("Outer error during MediaSource cleanup initiation:", e);
+                         resetPlayerAndState(); // Reset state even if cleanup setup fails
+                     }
+                 } else {
+                      if (mediaSource) console.log("MediaSource not 'open' during cleanup, state:", mediaSource.readyState);
+                      resetPlayerAndState(); // Reset state if MS not open/exists
+                 }
+            }
+
+            function resetLoadButton() {
+                loadButton.disabled = false;
+                loadButton.textContent = 'Load Stream';
+            }
+
+            loadButton.addEventListener('click', handleLoadButtonClick);
+            setupAudioPlayerListeners();
+            displayStatus('Enter Token and Music ID, then click "Load Stream".', false, true);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeAudioStreamer);
+        } else {
+            initializeAudioStreamer();
+        }
+    </script>
+
+</body>
+</html>
