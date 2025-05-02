@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import musicRoutes from './routes/musicsRouter.js';
+import userRoutes from "./routes/userRoutes.js"
 import errorHandler from './middlewares/errorHandler.js';
 import { sendError } from './utils/responseUtils.js';
 
@@ -21,9 +22,10 @@ const __dirname = path.dirname(__filename);
 app.use(cors());
 app.use(express.json());
 
-
-app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/music', musicRoutes);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
+
 
 app.get('/', (req, res) => {
     res.send('Sonify API is alive ^-^ 🪄🥳');
@@ -57,7 +59,7 @@ const server = app.listen(PORT, () =>
     )
 );
 
-process.on('unhandledRejection', (err, promise) => {
-    console.error(`Unhandled Rejection: ${err.message}`);
-    server.close(() => process.exit(1));
-});
+// process.on('unhandledRejection', (err, promise) => {
+//     console.error(`Unhandled Rejection: ${err.message}`);
+//     server.close(() => process.exit(1));
+// });

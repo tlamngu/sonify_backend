@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer"; // Import multer itself
 
-import { validateRequest } from "../middlewares/validateRequest.js"; // Assuming this exists
+import { validateRequest } from "../middlewares/validateRequest.js"; 
 import { protect, authorize } from "../middlewares/authMiddleware.js"; // Removed onlyArtist as authorize handles roles
 import {
   uploadMusic,
@@ -22,6 +22,8 @@ const upload = multer({
 });
 
 // --- Music Routes ---
+// API get music stream by ID
+router.get("/stream/:musicId", protect, streamMusicById);
 
 // API upload music
 router.post(
@@ -49,8 +51,6 @@ router.delete(
   deleteMusic
 );
 
-// API get music stream by ID
-router.get("/stream/:musicId", protect, streamMusicById);
 
 // API get music detail by ID this API does not require authentication
 router.get("/:id", getMusicById);

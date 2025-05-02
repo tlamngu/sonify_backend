@@ -175,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setupSourceBufferListeners(sourceBuffer);
 
             const streamUrl = `${STREAM_API_BASE_URL}${musicId}`;
+            console.log(streamUrl)
             const response = await fetch(streamUrl, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${authToken}` }

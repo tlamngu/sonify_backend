@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Types } from 'mongoose';
 import { parseBuffer } from 'music-metadata';
 import https from 'https';
 import stream from 'stream';
@@ -7,7 +7,8 @@ import cloudinary from 'cloudinary';
 
 import { uploadToCloudinary } from "../utils/cdnUtils.js";
 import { generateAssetToken, verifyAssetToken } from "../utils/assetTokenUtils.js";
-import Music from "../models/music.model.js";
+import Music from "../models/music.model.js"
+import StreamTracking from '../models/streamTracking.model.js';
 import { console } from 'inspector';
 
 const pipeline = promisify(stream.pipeline);
@@ -171,8 +172,35 @@ export const uploadMusic = async (req, res) => {
     }
 };
 
+export const musicStreamTracking = async (userID="" , musicID="") => {
+    if (!userID || !musicID) {
+        console.error(`Invalid UserID (${userID}) or MusicID (${musicID}) provided for stream tracking.`);
+        return false;
+    }
+    console.log("Trying to create tracking record...")
+    try {
+        const newRecord = await StreamTracking.create({
+            user_id: new Types.ObjectId(userID),  
+            music_id: new Types.ObjectId(musicID)
+        });
+
+        if (newRecord) {
+            console.log(`Stream tracked: User ${userID} -> Music ${musicID} (Record ID: ${newRecord._id})`);
+            return true;
+        } else {
+            console.warn(`StreamTracking.create seemed to succeed but returned no record for User ${userID}, Music ${musicID}`);
+            return false;
+        }
+    } catch (e) {
+        console.error(`Error creating stream tracking record for User ${userID} -> Music ${musicID}:`, e.message);
+        return false;
+    }
+};
+
 export const streamMusicById = async (req, res) => {
     const { musicId } = req.params;
+    await musicStreamTracking(req.user._id, musicId);
+    
     const range = req.headers.range;
     console.log("Streaming music...")
     if (!mongoose.Types.ObjectId.isValid(musicId)) {
@@ -182,7 +210,6 @@ export const streamMusicById = async (req, res) => {
     try {
         console.log(`Streaming requested for musicId: ${musicId} by User: ${req.user?._id || 'Unknown'}, Range: ${range || 'None'}`);
         const musicDoc = await Music.findById(musicId).select('stream_pack is_deleted').lean();
-
         if (!musicDoc) {
             console.log(`Music not found for streaming: ${musicId}`);
             return res.status(404).send('Music track not found.');
@@ -195,7 +222,6 @@ export const streamMusicById = async (req, res) => {
             console.error(`CRITICAL: Missing stream_pack (asset token) for musicId: ${musicId}`);
             return res.status(500).send('Internal server error: Asset information is missing.');
         }
-
         let assetDetails;
         try {
             assetDetails = verifyAssetToken(musicDoc.stream_pack);
@@ -227,7 +253,6 @@ export const streamMusicById = async (req, res) => {
             options.headers['Range'] = range;
             console.log(`Forwarding Range header: ${range} for ${musicId}`);
         }
-
         const cloudinaryRequest = https.request(cloudinaryUrl, options, async (cloudinaryResponse) => {
             const { statusCode, headers: responseHeaders } = cloudinaryResponse;
             console.log(`Cloudinary response status: ${statusCode} for ${public_id}`);
@@ -251,7 +276,6 @@ export const streamMusicById = async (req, res) => {
                 if (statusCode === 416) return res.status(416).send('Range not satisfiable.');
                 return res.status(502).send(`Bad Gateway: Upstream server error (${statusCode})`);
             }
-
             if(res.headersSent) {
                 console.warn(`Headers already sent for ${musicId}, but received success ${statusCode} from Cloudinary. Aborting pipe.`);
                 cloudinaryResponse.resume();
@@ -265,7 +289,6 @@ export const streamMusicById = async (req, res) => {
             if (responseHeaders['content-range']) res.setHeader('Content-Range', responseHeaders['content-range']);
 
             res.writeHead(statusCode);
-
             console.log(`Piping stream for ${musicId} (${public_id}) to client... Status: ${statusCode}`);
             try {
                 await pipeline(cloudinaryResponse, res);
