@@ -20,18 +20,18 @@ export const uploadMusic = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized: User information missing or invalid token.' });
         }
         console.log("Music Upload Requested By:", req.user.username);
-       if(!req.file.coverImage[0]){
+       if(!req.files.coverImage){
         return res.status(400).json({ message: 'No image file provided.' });
        } 
-        if (!req.file.coverImage[0].buffer || req.file.coverImage[0].mimetype || !req.file.coverImage[0].mimetype.startsWith('image/')){
-            console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.file.coverImage[0].mimetype}`);
+        if (!req.files.coverImage[0].buffer || !req.files.coverImage[0].mimetype || !req.files.coverImage[0].mimetype.startsWith('image/')){
+            console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.files.coverImage[0].mimetype}`);
             return res.status(400).json({ message: 'Invalid file type or missing file data. Only image files are allowed.' });
         }
-        if (!req.file.audioFile[0]) {
+        if (!req.files.audioFile) {
             return res.status(400).json({ message: 'No music file provided.' });
         }
-        if (!req.file.audioFile[0].buffer || !req.file.audioFile[0].mimetype || !req.file.audioFile[0].mimetype.startsWith('audio/')) {
-             console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.file.audioFile[0].mimetype}`);
+        if (!req.files.audioFile[0].buffer || !req.files.audioFile[0].mimetype || !req.files.audioFile[0].mimetype.startsWith('audio/')) {
+             console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.files.audioFile[0].mimetype}`);
              return res.status(400).json({ message: 'Invalid file type or missing file data. Only audio files are allowed.' });
         }
 
@@ -49,35 +49,35 @@ export const uploadMusic = async (req, res) => {
         }
 
         console.log(`Received metadata: Title - ${title}`);
-        console.log(`Processing file "${req.file.audioFile[0].originalname}"...`);
+        console.log(`Processing file "${req.files.audioFile[0].originalname}"...`);
 
         let durationMs = 0;
         try {
-            const metadata = await parseBuffer(req.file.audioFile[0].buffer, req.file.audioFile[0].mimetype);
+            const metadata = await parseBuffer(req.files.audioFile[0].buffer, req.files.audioFile[0].mimetype);
             if (metadata?.format?.duration) {
                 durationMs = Math.round(metadata.format.duration * 1000);
                 console.log(`Calculated duration: ${durationMs} ms`);
             } else {
-                console.warn(`Could not extract duration for file: ${req.file.audioFile[0].originalname}`);
+                console.warn(`Could not extract duration for file: ${req.files.audioFile[0].originalname}`);
                  return res.status(400).json({ message: 'Failed to calculate audio duration. File might be corrupted or format unsupported.' });
             }
         } catch (durationError) {
-            console.error(`Error calculating duration for ${req.file.audioFile[0].originalname}:`, durationError);
+            console.error(`Error calculating duration for ${req.files.audioFile[0].originalname}:`, durationError);
              return res.status(400).json({ message: `Error processing audio file: ${durationError.message}` });
         }
 
         const folderPath = `audio/${req.user._id}`;
         console.log(`Uploading audio to Cloudinary folder: ${folderPath}`);
-        const cloudinaryResult = await uploadToCloudinary(req.file.audioFile[0], folderPath);
+        const cloudinaryResult = await uploadToCloudinary(req.files.audioFile[0], folderPath);
         console.log("Cloudinary Audio Upload Successful:", cloudinaryResult.public_id);
         const folderImagePath =`image/${req.user._id}`
         console.log(`Uploading image to Cloudinary folder: ${folderImagePath}`)
-        const cloudinaryImageResult= await uploadImagetoCloudinary(req.file.coverImage[0],folderImagePath)
+        const cloudinaryImageResult= await uploadImagetoCloudinary(req.files.coverImage[0],folderImagePath)
         console.log("Cloudinary Image Upload Successful:", cloudinaryResult.public_id);
         const assetPayload = {
             public_id: cloudinaryResult.public_id,
             resource_type: cloudinaryResult.resource_type,
-            format: cloudinaryResult.format || req.file.audioFile[0].mimetype.split('/')[1],
+            format: cloudinaryResult.format || req.files.audioFile[0].mimetype.split('/')[1],
         };
         const streamPackToken = generateAssetToken(assetPayload);
         console.log("Generated Asset Token (Stream Pack).");
