@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer"; // Import multer itself
 
-import { validateRequest } from "../middlewares/validateRequest.js"; 
+import { validateRequest } from "../middlewares/validateRequest.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js"; // Removed onlyArtist as authorize handles roles
 import {
   uploadMusic,
@@ -30,7 +30,10 @@ router.post(
   "/upload",
   protect,
   authorize("admin", "artist"),
-  upload.single("audioFile"),
+  upload.fields([
+    { name: "audioFile", maxCount: 1 },
+    { name: "coverImage", maxCount: 1 },
+  ]),
   uploadMusic
 );
 
@@ -51,9 +54,7 @@ router.delete(
   deleteMusic
 );
 
-
 // API get music detail by ID this API does not require authentication
 router.get("/:id", getMusicById);
-
 
 export default router;

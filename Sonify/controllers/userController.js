@@ -4,6 +4,7 @@ import Artist from '../models/artist.model.js';
 import UserSettings from '../models/userSettings.model.js'; 
 import { sendSuccess, sendError } from '../utils/responseUtils.js';
 import { sanitizeUserOutput } from '../utils/sanitizeUser.js'; 
+import { uploadImagetoCloudinary } from '../utils/cdnUtils.js';
 
 const VALID_ROLES = ['user', 'admin', 'moderator', 'artist'];
 
@@ -185,7 +186,10 @@ export const updateUserRole = async (req, res, next) => {
 export const editUserProfile = async (req, res, next) => {
     const { userID } = req.params;
     const adminUserId = req.user._id;
-
+    if(!req.file.buffer || !req.file.mimetype || !req.file.mimetype.startsWith('image/')){
+        console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.file.mimetype}`);
+        return res.status(400).json({message: 'Invalid file type or missing file data. Only image files are allowed.'})
+    }
     if (!mongoose.Types.ObjectId.isValid(userID)) {
         return sendError(res, 400, 'Invalid User ID format.');
     }
@@ -196,14 +200,16 @@ export const editUserProfile = async (req, res, next) => {
         'profile_image_path',
         'is_email_verified' 
     ];
-
     const updates = {};
     Object.keys(req.body).forEach((key) => {
         if (allowedUpdates.includes(key)) {
             updates[key] = req.body[key];
         }
     });
-
+    const folderImagePath =`image/${userID}`
+    const cloudinaryImageResult=await uploadImagetoCloudinary(req.file,folderImagePath)
+    console.log("Cloudinary Upload Image Success: ",cloudinaryImageResult.public_id)
+    updates.profile_image_path=cloudinaryImageResult.url
     if (Object.keys(updates).length === 0) {
         return sendError(res, 400, 'No valid fields provided for update.', { allowedFields: allowedUpdates });
     }

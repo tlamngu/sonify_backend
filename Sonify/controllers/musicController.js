@@ -5,7 +5,7 @@ import stream from "stream";
 import { promisify } from "util";
 import cloudinary from "cloudinary";
 
-import { uploadToCloudinary } from "../utils/cdnUtils.js";
+import { uploadImagetoCloudinary, uploadToCloudinary } from "../utils/cdnUtils.js";
 import {
   generateAssetToken,
   verifyAssetToken,
@@ -17,13 +17,170 @@ import { console } from "inspector";
 const pipeline = promisify(stream.pipeline);
 
 export const uploadMusic = async (req, res) => {
-  console.log("Uploading music...");
-  try {
-    if (!req.user || !req.user._id || !req.user.username) {
-      return res
-        .status(401)
-        .json({
-          message: "Unauthorized: User information missing or invalid token.",
+    console.log("Uploading music...")
+    try {
+        if (!req.user || !req.user._id || !req.user.username) {
+            return res.status(401).json({ message: 'Unauthorized: User information missing or invalid token.' });
+        }
+        console.log("Music Upload Requested By:", req.user.username);
+       if(!req.file.coverImage[0]){
+        return res.status(400).json({ message: 'No image file provided.' });
+       } 
+        if (!req.file.coverImage[0].buffer || req.file.coverImage[0].mimetype || !req.file.coverImage[0].mimetype.startsWith('image/')){
+            console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.file.coverImage[0].mimetype}`);
+            return res.status(400).json({ message: 'Invalid file type or missing file data. Only image files are allowed.' });
+        }
+        if (!req.file.audioFile[0]) {
+            return res.status(400).json({ message: 'No music file provided.' });
+        }
+        if (!req.file.audioFile[0].buffer || !req.file.audioFile[0].mimetype || !req.file.audioFile[0].mimetype.startsWith('audio/')) {
+             console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.file.audioFile[0].mimetype}`);
+             return res.status(400).json({ message: 'Invalid file type or missing file data. Only audio files are allowed.' });
+        }
+
+        const {
+            title,
+            collaborators,
+            album_id,
+            genre_id,
+            release_date,
+            credits
+        } = req.body;
+
+        if (!title) {
+            return res.status(400).json({ message: 'Missing required field: title.' });
+        }
+
+        console.log(`Received metadata: Title - ${title}`);
+        console.log(`Processing file "${req.file.audioFile[0].originalname}"...`);
+
+        let durationMs = 0;
+        try {
+            const metadata = await parseBuffer(req.file.audioFile[0].buffer, req.file.audioFile[0].mimetype);
+            if (metadata?.format?.duration) {
+                durationMs = Math.round(metadata.format.duration * 1000);
+                console.log(`Calculated duration: ${durationMs} ms`);
+            } else {
+                console.warn(`Could not extract duration for file: ${req.file.audioFile[0].originalname}`);
+                 return res.status(400).json({ message: 'Failed to calculate audio duration. File might be corrupted or format unsupported.' });
+            }
+        } catch (durationError) {
+            console.error(`Error calculating duration for ${req.file.audioFile[0].originalname}:`, durationError);
+             return res.status(400).json({ message: `Error processing audio file: ${durationError.message}` });
+        }
+
+        const folderPath = `audio/${req.user._id}`;
+        console.log(`Uploading audio to Cloudinary folder: ${folderPath}`);
+        const cloudinaryResult = await uploadToCloudinary(req.file.audioFile[0], folderPath);
+        console.log("Cloudinary Audio Upload Successful:", cloudinaryResult.public_id);
+        const folderImagePath =`image/${req.user._id}`
+        console.log(`Uploading image to Cloudinary folder: ${folderImagePath}`)
+        const cloudinaryImageResult= await uploadImagetoCloudinary(req.file.coverImage[0],folderImagePath)
+        console.log("Cloudinary Image Upload Successful:", cloudinaryResult.public_id);
+        const assetPayload = {
+            public_id: cloudinaryResult.public_id,
+            resource_type: cloudinaryResult.resource_type,
+            format: cloudinaryResult.format || req.file.audioFile[0].mimetype.split('/')[1],
+        };
+        const streamPackToken = generateAssetToken(assetPayload);
+        console.log("Generated Asset Token (Stream Pack).");
+
+        const finalCollaborators = [];
+        finalCollaborators.push({
+            user_id: req.user._id,
+            name: req.user.username,
+            role: 'Primary Artist'
+        });
+        console.log(`Added uploader ${req.user.username} as first collaborator.`);
+
+        if (Array.isArray(collaborators)) {
+             console.log(`Processing ${collaborators.length} additional collaborators from client.`);
+            collaborators.forEach(collab => {
+                if (collab && typeof collab.name === 'string' && collab.name.trim()) {
+                    const isUploader = collab.user_id &&
+                                       mongoose.Types.ObjectId.isValid(collab.user_id) &&
+                                       req.user._id.equals(collab.user_id);
+
+                    if (isUploader) {
+                        console.log(`Skipping collaborator entry matching uploader: ${collab.name}`);
+                        return;
+                    }
+
+                    const formattedCollab = {
+                        name: collab.name.trim(),
+                        role: typeof collab.role === 'string' && collab.role.trim() ? collab.role.trim() : 'Contributor',
+                        user_id: (collab.user_id && mongoose.Types.ObjectId.isValid(collab.user_id)) ? collab.user_id : null,
+                        artist_id: (collab.artist_id && mongoose.Types.ObjectId.isValid(collab.artist_id)) ? collab.artist_id : null,
+                    };
+                    finalCollaborators.push(formattedCollab);
+
+                } else {
+                    console.warn("Ignoring invalid collaborator object:", collab);
+                }
+            });
+        } else {
+            console.log("No additional collaborators array provided by client or invalid format.");
+        }
+        console.log(`Total collaborators processed: ${finalCollaborators.length}`);
+
+        const musicData = {
+            title: title.trim(),
+            album_id: album_id && mongoose.Types.ObjectId.isValid(album_id) ? album_id : null,
+            genre_id: Array.isArray(genre_id)
+                ? genre_id.filter(id => mongoose.Types.ObjectId.isValid(id))
+                : [],
+            stream_pack: streamPackToken,
+            cover_image: cloudinaryImageResult.url,
+            duration_ms: durationMs,
+            release_date: release_date ? new Date(release_date) : new Date(),
+            credits: typeof credits === 'object' && credits !== null ? credits : {},
+            collaborators: finalCollaborators,
+            play_count: 0,
+            like_count: 0,
+            comment_count: 0,
+            is_deleted: false,
+            is_scheduled: false,
+            scheduled_release_date: null,
+            music_video: {},
+        };
+
+        console.log("Saving music metadata to database...");
+        const newMusic = await Music.create(musicData);
+        console.log("Music record created successfully:", newMusic._id);
+
+        return res.status(201).json({
+            message: 'Music uploaded and record created successfully',
+            data: {
+                _id: newMusic._id,
+                title: newMusic.title,
+                duration_ms: newMusic.duration_ms,
+                primary_artist_name: newMusic.collaborators[0]?.name || 'N/A',
+                collaborators: newMusic.collaborators,
+                playbackUrl: `/stream/audio/${newMusic._id}`
+            }
+        });
+
+    } catch (error) {
+        if (error instanceof mongoose.Error && error.message.includes('Cannot populate virtual')) {
+             console.error('Schema Error: Attempted to populate a virtual without proper definition.', error);
+             return res.status(500).json({ message: 'Internal Server Error: Data relationship configuration issue.' });
+        }
+        console.error('Error during music upload process:', error);
+
+        if (error.name === 'ValidationError') {
+             console.error("Mongoose Validation Error:", error.errors);
+            return res.status(400).json({ message: 'Validation Error saving music data.', errors: error.errors });
+        }
+        if (error.code === 11000) {
+             console.error("Duplicate key error:", error.keyValue);
+             return res.status(409).json({ message: 'Conflict: Potential duplicate record detected.' });
+        }
+        if (error.message?.includes("Invalid payload")) {
+             return res.status(500).json({ message: 'Internal error generating asset token.' });
+        }
+        return res.status(500).json({
+            message: 'Internal server error during music upload.',
+            error: process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred.'
         });
     }
     console.log("Music Upload Requested By:", req.user.username);
