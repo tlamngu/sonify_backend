@@ -57,4 +57,37 @@ const uploadToCloudinary = async (file, folder = 'audio', public_id) => {
   });
 };
 
-export { uploadToCloudinary };
+const uploadImagetoCloudinary = async (file, folder='image',public_id)=>{
+  if(!file || !file.buffer){
+    throw new Error('Invalid file object provided. Expected an object with a "buffer" property.')
+  }
+  if(!cloudinary.v2.config().cloud_name){
+    throw new Error('Cloudinary is not configured. Set environment variables.')
+  }
+  return new Promise((resolve, reject) => {
+    const options={
+      resource_type:'image',
+      folder:folder,
+      timeout:60000
+    }
+    if(public_id){
+      options.public_id=public_id
+      options.overwrite=true
+    }
+    const uploadStream=cloudinary.v2.uploader.upload_stream(options,(err,result)=>{
+      if(err){
+        console.error('Cloundinary upload error: ', err)
+        reject('Cloudinary upload failed: ',err.message || err)
+      }
+      if(!result){
+        console.error('Cloudinary upload failed: No result received.');
+        return reject(new Error('Cloudinary upload failed: No result received.'));
+      }
+      console.log('Cloudinary upload successful:', result.secure_url);
+      return resolve(result)
+    })
+    streamifier.createReadStream(file.buffer).pipe(uploadStream)
+  })
+}
+
+export { uploadToCloudinary,uploadImagetoCloudinary };
