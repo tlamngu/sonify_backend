@@ -22,13 +22,13 @@ export const signupValidation = [
         'Password must be at least 6 characters long and include at least one number and one special character.'
     ).matches(passwordRegex),
 
-    check('passwordConfirmation', 'Password confirmation is required').notEmpty(),
-    check('passwordConfirmation').custom((value, { req }) => {
-        if (value !== req.body.password) {
-            throw new Error('Password confirmation does not match password');
-        }
-        return true;
-    }),
+    // check('passwordConfirmation', 'Password confirmation is required').notEmpty(),
+    // check('passwordConfirmation').custom((value, { req }) => {
+    //     if (value !== req.body.password) {
+    //         throw new Error('Password confirmation does not match password');
+    //     }
+    //     return true;
+    // }),
 ];
 
 export const loginValidation = [
