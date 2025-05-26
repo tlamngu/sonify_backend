@@ -782,7 +782,9 @@ export const listNewMusic = async (req, res) => {
 
 export const listArtistMusic=async (req,res)=>{
     try{
-        const {limit,offset,sortBy,sortOrder,user_id}=req.params
+        const {limit,offset,sortBy,sortOrder}=req.query
+        const user_id= req.user
+        console.log(user_id)
         const limitNum=parseInt(limit,10)
         const offsetNum = parseInt(offset, 10);
         if (isNaN(limitNum) || limitNum <= 0 || limitNum > 30) {
@@ -792,7 +794,7 @@ export const listArtistMusic=async (req,res)=>{
             return res.status(400).json({ message: 'Invalid offset parameter. Must be a non-negative number.' });
         }
         console.log(`Fetching ${limitNum} newest music tracks.`);
-        const ArtistMusic = await Music.find({ is_deleted: false ,"collaborators.[0].user_id": user_id})
+        const ArtistMusic = await Music.find({ is_deleted: false ,"collaborators.[0].user_id": user_id._id})
         .sort({ createdAt: -1 })
         .skip(offsetNum)
         .limit(limitNum)
@@ -811,7 +813,7 @@ export const listArtistMusic=async (req,res)=>{
             data: formattedResults
         });
     }catch(err){
-        console.error('Error fetching user music:', error);
+        console.error('Error fetching user music:', err);
         return res.status(500).json({ message: 'Internal Server Error User new music.' });
     }
 }
