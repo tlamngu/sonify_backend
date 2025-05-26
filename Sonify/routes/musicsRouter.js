@@ -42,7 +42,7 @@ router.post(
 // API get all music (lists new music)
 router.get("/list", listNewMusic);
 
-router.get("/list-music-user",protect,authorize("admin","artist"),listArtistMusic)
+router.get("/list-music-user",protect,listArtistMusic)
 
 router.get(
     "/search",
