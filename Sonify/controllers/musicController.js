@@ -782,7 +782,8 @@ export const listNewMusic = async (req, res) => {
 
 export const listArtistMusic=async (req,res)=>{
     try{
-        const {limit,offset,sortBy,sortOrder,user_id}=req.params
+        const {limit=10,offset=0,sortBy,sortOrder}=req.params
+        const user_id=req.user
         const limitNum=parseInt(limit,10)
         const offsetNum = parseInt(offset, 10);
         if (isNaN(limitNum) || limitNum <= 0 || limitNum > 30) {
@@ -792,7 +793,7 @@ export const listArtistMusic=async (req,res)=>{
             return res.status(400).json({ message: 'Invalid offset parameter. Must be a non-negative number.' });
         }
         console.log(`Fetching ${limitNum} newest music tracks.`);
-        const ArtistMusic = await Music.find({ is_deleted: false ,"collaborators.[0].user_id": user_id})
+        const ArtistMusic = await Music.find({ is_deleted: false ,"collaborators.0.user_id": user_id._id})
         .sort({ createdAt: -1 })
         .skip(offsetNum)
         .limit(limitNum)

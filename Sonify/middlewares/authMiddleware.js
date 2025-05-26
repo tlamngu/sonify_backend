@@ -53,7 +53,6 @@ export const protect = async (req, res, next) => {
 
         req.user = sanitizeUserOutput(freshUser);
         req.token = token;
-
         next();
 
     } catch (error) {
