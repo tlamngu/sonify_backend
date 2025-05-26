@@ -63,11 +63,13 @@ export const requestVerification = async (req, res, next) => {
 
         const verificationToken = generateVerificationToken(user._id);
         const verificationUrl = `${WEB_DOMAIN || ''}/verify/t/${verificationToken}`;
-
-        console.log('--- DEV EMAIL VERIFICATION ---');
-        console.log(`To: ${user.email}`);
-        console.log(`Link: ${verificationUrl}`);
-        console.log('--- END DEV EMAIL VERIFICATION ---');
+        if(process.env.NODE_ENV == "development"){
+            console.log('--- DEV EMAIL VERIFICATION ---');
+            console.log(`To: ${user.email}`);
+            console.log(`Link: ${verificationUrl}`);
+            console.log('--- END DEV EMAIL VERIFICATION ---');
+        }
+        
         sendValidationEmail({
           username: user.username,
           validateURL: verificationUrl,
@@ -78,7 +80,7 @@ export const requestVerification = async (req, res, next) => {
             res,
             200,
             null,
-            'Verification email requested. Check inbox (or console log for dev).'
+            process.env.NODE_ENV == "development" ? 'Verification email requested. Check inbox (or console log for dev).' : "Verification email sent successfully."
         );
 
     } catch (error) {

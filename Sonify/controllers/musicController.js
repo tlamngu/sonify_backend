@@ -4,11 +4,13 @@ import https from 'https';
 import stream from 'stream';
 import { promisify } from 'util';
 import cloudinary from 'cloudinary';
-
+import Album from "../models/album.model.js"
+import Artist from "../models/artist.model.js"
 import { uploadImagetoCloudinary, uploadToCloudinary } from "../utils/cdnUtils.js";
 import { generateAssetToken, verifyAssetToken } from "../utils/assetTokenUtils.js";
 import Music from "../models/music.model.js"
 import StreamTracking from '../models/streamTracking.model.js';
+import { sendSuccess, sendError } from '../utils/responseUtils.js';
 import { console } from 'inspector';
 
 const pipeline = promisify(stream.pipeline);
@@ -81,7 +83,17 @@ export const uploadMusic = async (req, res) => {
         };
         const streamPackToken = generateAssetToken(assetPayload);
         console.log("Generated Asset Token (Stream Pack).");
+        
+        let parseCollaborators=collaborators
 
+        if(typeof collaborators==='string'){
+            try{
+                parseCollaborators=JSON.parse(collaborators)
+            }catch(err){
+                console.error("Fail to parse collaborators: ",err)
+                parseCollaborators=[]
+            }
+        }
         const finalCollaborators = [];
         finalCollaborators.push({
             user_id: req.user._id,
@@ -90,9 +102,9 @@ export const uploadMusic = async (req, res) => {
         });
         console.log(`Added uploader ${req.user.username} as first collaborator.`);
 
-        if (Array.isArray(collaborators)) {
-             console.log(`Processing ${collaborators.length} additional collaborators from client.`);
-            collaborators.forEach(collab => {
+        if (Array.isArray(parseCollaborators)) {
+             console.log(`Processing ${parseCollaborators.length} additional collaborators from client.`);
+            parseCollaborators.forEach(collab => {
                 if (collab && typeof collab.name === 'string' && collab.name.trim()) {
                     const isUploader = collab.user_id &&
                                        mongoose.Types.ObjectId.isValid(collab.user_id) &&
@@ -179,31 +191,6 @@ export const uploadMusic = async (req, res) => {
             message: 'Internal server error during music upload.',
             error: process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred.'
         });
-    }
-};
-
-export const musicStreamTracking = async (userID="" , musicID="") => {
-    if (!userID || !musicID) {
-        console.error(`Invalid UserID (${userID}) or MusicID (${musicID}) provided for stream tracking.`);
-        return false;
-    }
-    console.log("Trying to create tracking record...")
-    try {
-        const newRecord = await StreamTracking.create({
-            user_id: new Types.ObjectId(userID),  
-            music_id: new Types.ObjectId(musicID)
-        });
-
-        if (newRecord) {
-            console.log(`Stream tracked: User ${userID} -> Music ${musicID} (Record ID: ${newRecord._id})`);
-            return true;
-        } else {
-            console.warn(`StreamTracking.create seemed to succeed but returned no record for User ${userID}, Music ${musicID}`);
-            return false;
-        }
-    } catch (e) {
-        console.error(`Error creating stream tracking record for User ${userID} -> Music ${musicID}:`, e.message);
-        return false;
     }
 };
 
@@ -569,83 +556,188 @@ export const deleteMusic = async (req, res) => {
     }
 };
 
-export const searchMusic = async (req, res) => {
-    const { q, artist, genre, album, limit = 10, page = 1 } = req.query;
-    console.log(`Music search requested by user: ${req.user?.username || 'Unknown'}`);
+export const musicStreamTracking = async (userID = "", musicID = "") => {
+    if (!userID || !musicID || !mongoose.Types.ObjectId.isValid(userID) || !mongoose.Types.ObjectId.isValid(musicID)) {
+        console.error(`Invalid UserID (${userID}) or MusicID (${musicID}) provided for stream tracking.`);
+        return false;
+    }
+    console.log("Trying to update/create tracking record...");
     try {
-        const filter = { is_deleted: false };
-        const searchConditions = [];
+        const updatedRecord = await StreamTracking.findOneAndUpdate(
+            { user_id: new mongoose.Types.ObjectId(userID), music_id: new mongoose.Types.ObjectId(musicID) },
+            { $inc: { play_count: 1 }, $set: { last_played_at: Date.now() } },
+            { upsert: true, new: true, setDefaultsOnInsert: true } // Ensure defaults like play_count:1 on insert
+        );
 
-        if (q && typeof q === 'string' && q.trim()) {
-            const keywordRegex = { $regex: q.trim(), $options: 'i' };
-            searchConditions.push({
-                $or: [
-                    { title: keywordRegex },
-                    { 'collaborators.name': keywordRegex }
-                ]
-            });
+        if (updatedRecord) {
+            console.log(`Stream tracked/updated: User ${userID} -> Music ${musicID} (Play Count: ${updatedRecord.play_count}, Record ID: ${updatedRecord._id})`);
+            // Increment global play_count on Music model
+            await Music.findByIdAndUpdate(musicID, { $inc: { play_count: 1 } });
+            return true;
+        } else {
+            console.warn(`StreamTracking.findOneAndUpdate failed to return a record for User ${userID}, Music ${musicID}`);
+            return false;
         }
-
-        if (artist && typeof artist === 'string' && artist.trim()) {
-            searchConditions.push({ 'collaborators.name': { $regex: artist.trim(), $options: 'i' } });
+    } catch (e) {
+        console.error(`Error updating/creating stream tracking record for User ${userID} -> Music ${musicID}:`, e.message);
+        if (e.code === 11000) { // Handle rare race condition if upsert fails due to concurrent insert
+             console.warn("Race condition during stream tracking upsert, attempting retry or log.");
         }
+        return false;
+    }
+};
 
-        if (genre && mongoose.Types.ObjectId.isValid(genre)) {
-            searchConditions.push({ genre_id: new mongoose.Types.ObjectId(genre) });
-        }
+export const searchMusic = async (req, res, next) => {
+    const {
+        q,
+        type = 'all', // Default to searching all types
+        genreId,
+        albumId: queryAlbumId, // Renamed to avoid conflict with album results
+        artistId: queryArtistId, // Renamed
+        limit = 10, // Default overall limit if specific limits aren't set
+        page = 1,   // Default overall page
+        musicPage = 1, albumPage = 1, artistPage = 1,
+        musicLimit = 5, albumLimit = 5, artistLimit = 5 // Default limits per category
+    } = req.query;
 
-        if (album && mongoose.Types.ObjectId.isValid(album)) {
-             searchConditions.push({ album_id: new mongoose.Types.ObjectId(album) });
-        }
+    const currentUser = req.user; // For potential personalization in the future
 
-        if (searchConditions.length > 0) {
-            filter.$and = searchConditions;
-        }
+    try {
+        const results = {
+            music: { data: [], pagination: {} },
+            albums: { data: [], pagination: {} },
+            artists: { data: [], pagination: {} },
+        };
 
-        const limitNum = parseInt(limit, 10);
-        const pageNum = parseInt(page, 10);
-        const skip = (pageNum > 0 ? pageNum - 1 : 0) * limitNum;
+        const globalFilter = { is_deleted: false };
+        const keywordRegex = q ? { $regex: q.trim(), $options: 'i' } : null;
 
-        console.log("Executing music search with filter:", JSON.stringify(filter), `Limit: ${limitNum}, Page: ${pageNum}`);
+        // --- Music Search ---
+        if (type === 'all' || type === 'music') {
+            const musicFilter = { ...globalFilter };
+            const musicConditions = [];
 
-        const musicList = await Music.find(filter)
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limitNum)
-            .lean();
-
-        const totalResults = await Music.countDocuments(filter);
-
-        const formattedResults = musicList.map(music => ({
-            _id: music._id,
-            title: music.title,
-            duration_ms: music.duration_ms,
-            primary_artist_name: music.collaborators[0]?.name || 'N/A',
-            collaborators: music.collaborators.map(c => ({ name: c.name, role: c.role })),
-            like_count: music.like_count,
-            play_count: music.play_count,
-            release_date: music.release_date,
-            created_at: music.createdAt,
-            playbackUrl: `/stream/audio/${music._id}`
-        }));
-
-        return res.status(200).json({
-            message: `Search results retrieved successfully.`,
-            data: formattedResults,
-            pagination: {
-                total: totalResults,
-                page: pageNum,
-                limit: limitNum,
-                totalPages: Math.ceil(totalResults / limitNum)
+            if (keywordRegex) {
+                musicConditions.push({
+                    $or: [
+                        { title: keywordRegex },
+                        { 'collaborators.name': keywordRegex }
+                    ]
+                });
             }
-        });
+            if (genreId) musicConditions.push({ genre_id: new mongoose.Types.ObjectId(genreId) });
+            if (queryAlbumId) musicConditions.push({ album_id: new mongoose.Types.ObjectId(queryAlbumId) });
+            if (queryArtistId) musicConditions.push({ 'collaborators.artist_id': new mongoose.Types.ObjectId(queryArtistId) }); // Or user_id if artists are users
+
+            if (musicConditions.length > 0) {
+                musicFilter.$and = musicConditions;
+            }
+
+            const mLimit = parseInt(musicLimit) || parseInt(limit);
+            const mPage = parseInt(musicPage) || parseInt(page);
+            const mSkip = (mPage - 1) * mLimit;
+
+            const musicList = await Music.find(musicFilter)
+                .sort({ play_count: -1, createdAt: -1 })
+                .skip(mSkip)
+                .limit(mLimit)
+                .select('-stream_pack -is_deleted') // Exclude sensitive info
+                .populate({ path: 'album_id', select: 'name cover_image_path' }) // Populate basic album info
+                .lean();
+
+            const totalMusic = await Music.countDocuments(musicFilter);
+            results.music = {
+                data: musicList.map(m => ({ ...m, playbackUrl: `/api/v1/music/stream/${m._id}`})),
+                pagination: {
+                    page: mPage,
+                    limit: mLimit,
+                    totalPages: Math.ceil(totalMusic / mLimit),
+                    totalItems: totalMusic
+                }
+            };
+        }
+
+        // --- Album Search ---
+        if (type === 'all' || type === 'album') {
+            const albumFilter = { ...globalFilter };
+             const albumConditions = [];
+            if (keywordRegex) {
+                 albumConditions.push({
+                     $or: [
+                         { name: keywordRegex },
+                         { 'collaborators.name': keywordRegex }
+                     ]
+                 });
+            }
+            if (genreId) albumConditions.push({ genre_id: new mongoose.Types.ObjectId(genreId) });
+            // If searching for albums by a specific artist
+            if (queryArtistId) albumConditions.push({ 'collaborators.artist_id': new mongoose.Types.ObjectId(queryArtistId) });
+
+
+            if(albumConditions.length > 0) {
+                albumFilter.$and = albumConditions;
+            }
+
+            const aLimit = parseInt(albumLimit) || parseInt(limit);
+            const aPage = parseInt(albumPage) || parseInt(page);
+            const aSkip = (aPage - 1) * aLimit;
+
+            const albumList = await Album.find(albumFilter)
+                .sort({ release_date: -1, createdAt: -1 })
+                .skip(aSkip)
+                .limit(aLimit)
+                .select('-credits -is_deleted')
+                .populate({path: 'genre_id', select: 'name'}) // Populate genre name
+                .lean();
+            const totalAlbums = await Album.countDocuments(albumFilter);
+            results.albums = {
+                data: albumList,
+                pagination: {
+                    page: aPage,
+                    limit: aLimit,
+                    totalPages: Math.ceil(totalAlbums / aLimit),
+                    totalItems: totalAlbums
+                }
+            };
+        }
+
+        // --- Artist Search ---
+        if (type === 'all' || type === 'artist') {
+            const artistFilter = { ...globalFilter };
+            if (keywordRegex) artistFilter.name = keywordRegex;
+            // If searching artists by a specific genre
+            if (genreId) artistFilter.genres = new mongoose.Types.ObjectId(genreId);
+
+
+            const artLimit = parseInt(artistLimit) || parseInt(limit);
+            const artPage = parseInt(artistPage) || parseInt(page);
+            const artSkip = (artPage - 1) * artLimit;
+
+            const artistList = await Artist.find(artistFilter)
+                .sort({ name: 1 }) // Typically sort artists by name
+                .skip(artSkip)
+                .limit(artLimit)
+                .select('-is_deleted')
+                .lean();
+            const totalArtists = await Artist.countDocuments(artistFilter);
+            results.artists = {
+                data: artistList,
+                pagination: {
+                    page: artPage,
+                    limit: artLimit,
+                    totalPages: Math.ceil(totalArtists / artLimit),
+                    totalItems: totalArtists
+                }
+            };
+        }
+
+        sendSuccess(res, 200, results, 'Search results retrieved successfully.');
 
     } catch (error) {
-        console.error('Error during music search:', error);
-         if (error.name === 'CastError' && error.path?.includes('_id')) {
-             return res.status(400).json({ message: 'Invalid ID format provided for genre or album filter.' });
+        if (error.name === 'CastError') {
+            return sendError(res, 400, 'Invalid ID format provided for filtering.');
         }
-        return res.status(500).json({ message: 'Internal Server Error during music search.' });
+        next(error);
     }
 };
 
@@ -667,13 +759,14 @@ export const listNewMusic = async (req, res) => {
 
         const formattedResults = newMusic.map(music => ({
             _id: music._id,
+            cover_image: music.cover_image,
             title: music.title,
             duration_ms: music.duration_ms,
             primary_artist_name: music.collaborators[0]?.name || 'N/A',
             like_count: music.like_count,
             play_count: music.play_count,
             created_at: music.createdAt,
-            playbackUrl: `/stream/audio/${music._id}`
+            playbackUrl: `/api/v1/music/stream/${music._id}`
         }));
 
         return res.status(200).json({
@@ -686,3 +779,39 @@ export const listNewMusic = async (req, res) => {
         return res.status(500).json({ message: 'Internal Server Error fetching new music.' });
     }
 };
+
+export const listArtistMusic=async (req,res)=>{
+    try{
+        const {limit,offset,sortBy,sortOrder,user_id}=req.params
+        const limitNum=parseInt(limit,10)
+        const offsetNum = parseInt(offset, 10);
+        if (isNaN(limitNum) || limitNum <= 0 || limitNum > 30) {
+            return res.status(400).json({ message: 'Invalid limit parameter. Must be a positive number (max 30).' });
+        }
+        if (isNaN(offsetNum) || offsetNum < 0) {
+            return res.status(400).json({ message: 'Invalid offset parameter. Must be a non-negative number.' });
+        }
+        console.log(`Fetching ${limitNum} newest music tracks.`);
+        const ArtistMusic = await Music.find({ is_deleted: false ,"collaborators.[0].user_id": user_id})
+        .sort({ createdAt: -1 })
+        .skip(offsetNum)
+        .limit(limitNum)
+        .lean();
+        const formattedResults = ArtistMusic.map(music => ({
+            _id: music._id,
+            cover_image: music.cover_image,
+            title: music.title,
+            genre: Array.isArray(music.genre) ? music.genre : [],
+            collaborators: Array.isArray(music.collaborators) ? music.collaborators : [],
+            content_type:(music.content_type && music.content_type.stream_pack) ? 'Music' : 'Poscast',
+            created_at: music.createdAt,
+        }));
+        return res.status(200).json({
+            message: 'List Music successfully',
+            data: formattedResults
+        });
+    }catch(err){
+        console.error('Error fetching user music:', error);
+        return res.status(500).json({ message: 'Internal Server Error User new music.' });
+    }
+}

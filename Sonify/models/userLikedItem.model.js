@@ -9,7 +9,7 @@ const userLikedItemSchema = new Schema({
     liked_date: { type: Date, required: true, default: Date.now, index: true },
 }, { timestamps: true });
 
-userLikedItemSchema.index({ user_id: 1, item_id: 1, item_type: 1 }, { unique: true });
+userLikedItemSchema.index({ user_id: 1, item_id: 1, item_type: 1 });
 userLikedItemSchema.index({ item_id: 1, item_type: 1 });
 
 const UserLikedItem = mongoose.model('UserLikedItem', userLikedItemSchema);

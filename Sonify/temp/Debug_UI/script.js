@@ -493,6 +493,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const collaboratorsInput = form.elements['collaborators'].value.trim();
         const creditsInput = form.elements['credits'].value.trim();
         const genreInput = form.elements['genre_id_input'].value.trim();
+        
+        const coverImage = form.elements['']
 
         formData.delete('genre_id_input');
         if (!formData.get('album_id')) formData.delete('album_id');

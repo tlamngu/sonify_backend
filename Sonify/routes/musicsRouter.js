@@ -1,30 +1,32 @@
+// In: ../routes/musicsRouter.js
 import express from "express";
-import multer from "multer"; // Import multer itself
+import multer from "multer";
 
 import { validateRequest } from "../middlewares/validateRequest.js";
-import { protect, authorize } from "../middlewares/authMiddleware.js"; // Removed onlyArtist as authorize handles roles
+import { protect, authorize } from "../middlewares/authMiddleware.js";
 import {
   uploadMusic,
   streamMusicById,
   getMusicById,
   updateMusic,
   deleteMusic,
-  searchMusic,
+  searchMusic, 
   listNewMusic,
+  listArtistMusic,
 } from "../controllers/musicController.js";
+import { searchMusicValidation } from "../validators/musicValidators.js"; 
 
 const router = express.Router();
 
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
 });
 
 // --- Music Routes ---
 // API get music stream by ID
 router.get("/stream/:musicId", protect, streamMusicById);
-
 // API upload music
 router.post(
   "/upload",
@@ -37,14 +39,25 @@ router.post(
   uploadMusic
 );
 
-// API get all music
+// API get all music (lists new music)
 router.get("/list", listNewMusic);
 
-//  search (using query params)
-router.get("/search", searchMusic);
+router.get("/list-music-user",protect,authorize,listArtistMusic)
+
+router.get(
+    "/search",
+    searchMusicValidation, 
+    validateRequest,
+    searchMusic 
+);
 
 // API edit music
-router.put("/update/:id", protect, authorize("admin", "artist"), updateMusic);
+router.put(
+    "/update/:id",
+    protect,
+    authorize("admin", "artist"),
+    updateMusic
+);
 
 // API delete music
 router.delete(

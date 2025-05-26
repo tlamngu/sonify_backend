@@ -52,7 +52,7 @@ export const listUsers = async (req, res, next) => {
 
         const totalPages = Math.ceil(totalUsers / limit);
 
-        sendSuccess(res, 200, 'Users retrieved successfully.', {
+        sendSuccess(res, 200, {
             users: sanitizedUsers,
             pagination: {
                 page,
@@ -64,7 +64,7 @@ export const listUsers = async (req, res, next) => {
             },
             filters: { role, username, email },
             sorting: { sortBy, sortOrder },
-        });
+        }, 'Users retrieved successfully.');
 
     } catch (error) {
         console.error("Error listing users:", error);

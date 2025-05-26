@@ -7,8 +7,13 @@ import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import musicRoutes from './routes/musicsRouter.js';
 import userRoutes from "./routes/userRoutes.js"
+import featuresRoutes from "./routes/featuresRoute.js"
 import errorHandler from './middlewares/errorHandler.js';
 import { sendError } from './utils/responseUtils.js';
+import genreRoutes from './routes/genreRoutes.js';
+import albumRoutes from './routes/albumRoutes.js';
+import userLibraryRoutes from './routes/userLibraryRoutes.js';
+import recommendationRoutes from './routes/recommendationRoutes.js';
 
 dotenv.config();
 
@@ -19,12 +24,20 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const API_V1_BASE = '/api/v1';
+
 app.use(cors());
 app.use(express.json());
 
-app.use('/api/v1/music', musicRoutes);
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/users', userRoutes);
+app.use(`${API_V1_BASE}/auth`, authRoutes);
+app.use(`${API_V1_BASE}/users`, userRoutes);
+app.use(`${API_V1_BASE}/music`, musicRoutes); 
+app.use(`${API_V1_BASE}/features`, featuresRoutes); 
+
+app.use(`${API_V1_BASE}/genres`, genreRoutes);
+app.use(`${API_V1_BASE}/albums`, albumRoutes);
+app.use(`${API_V1_BASE}/library`, userLibraryRoutes);
+app.use(`${API_V1_BASE}/recommendations`, recommendationRoutes);
 
 
 app.get('/', (req, res) => {
