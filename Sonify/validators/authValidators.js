@@ -24,10 +24,10 @@ export const signupValidation = [
 
     // check('passwordConfirmation', 'Password confirmation is required').notEmpty(),
     // check('passwordConfirmation').custom((value, { req }) => {
-        // if (value !== req.body.password) {
-            // throw new Error('Password confirmation does not match password');
-        // }
-        // return true;
+    //     if (value !== req.body.password) {
+    //         throw new Error('Password confirmation does not match password');
+    //     }
+    //     return true;
     // }),
 ];
 

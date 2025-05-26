@@ -83,7 +83,17 @@ export const uploadMusic = async (req, res) => {
         };
         const streamPackToken = generateAssetToken(assetPayload);
         console.log("Generated Asset Token (Stream Pack).");
+        
+        let parseCollaborators=collaborators
 
+        if(typeof collaborators==='string'){
+            try{
+                parseCollaborators=JSON.parse(collaborators)
+            }catch(err){
+                console.error("Fail to parse collaborators: ",err)
+                parseCollaborators=[]
+            }
+        }
         const finalCollaborators = [];
         finalCollaborators.push({
             user_id: req.user._id,
@@ -92,9 +102,9 @@ export const uploadMusic = async (req, res) => {
         });
         console.log(`Added uploader ${req.user.username} as first collaborator.`);
 
-        if (Array.isArray(collaborators)) {
-             console.log(`Processing ${collaborators.length} additional collaborators from client.`);
-            collaborators.forEach(collab => {
+        if (Array.isArray(parseCollaborators)) {
+             console.log(`Processing ${parseCollaborators.length} additional collaborators from client.`);
+            parseCollaborators.forEach(collab => {
                 if (collab && typeof collab.name === 'string' && collab.name.trim()) {
                     const isUploader = collab.user_id &&
                                        mongoose.Types.ObjectId.isValid(collab.user_id) &&
@@ -769,3 +779,39 @@ export const listNewMusic = async (req, res) => {
         return res.status(500).json({ message: 'Internal Server Error fetching new music.' });
     }
 };
+
+export const listArtistMusic=async (req,res)=>{
+    try{
+        const {limit,offset,sortBy,sortOrder,user_id}=req.params
+        const limitNum=parseInt(limit,10)
+        const offsetNum = parseInt(offset, 10);
+        if (isNaN(limitNum) || limitNum <= 0 || limitNum > 30) {
+            return res.status(400).json({ message: 'Invalid limit parameter. Must be a positive number (max 30).' });
+        }
+        if (isNaN(offsetNum) || offsetNum < 0) {
+            return res.status(400).json({ message: 'Invalid offset parameter. Must be a non-negative number.' });
+        }
+        console.log(`Fetching ${limitNum} newest music tracks.`);
+        const ArtistMusic = await Music.find({ is_deleted: false ,"collaborators.[0].user_id": user_id})
+        .sort({ createdAt: -1 })
+        .skip(offsetNum)
+        .limit(limitNum)
+        .lean();
+        const formattedResults = ArtistMusic.map(music => ({
+            _id: music._id,
+            cover_image: music.cover_image,
+            title: music.title,
+            genre: Array.isArray(music.genre) ? music.genre : [],
+            collaborators: Array.isArray(music.collaborators) ? music.collaborators : [],
+            content_type:(music.content_type && music.content_type.stream_pack) ? 'Music' : 'Poscast',
+            created_at: music.createdAt,
+        }));
+        return res.status(200).json({
+            message: 'List Music successfully',
+            data: formattedResults
+        });
+    }catch(err){
+        console.error('Error fetching user music:', error);
+        return res.status(500).json({ message: 'Internal Server Error User new music.' });
+    }
+}
