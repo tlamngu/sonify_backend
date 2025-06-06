@@ -36,19 +36,19 @@ export const addItemToLibrary = async (req, res, next) => {
         }
 
         const existingLibraryItem = await UserLibraryItem.findOne({ user_id, item_id, item_type });
-
+        
         if (existingLibraryItem) {
             return sendSuccess(res, 200, existingLibraryItem, 'Item already in library.');
         }
 
-        const newLibraryItem = new UserLibraryItem({
-            user_id,
-            item_id,
-            item_type,
+         await UserLibraryItem.create({
+            user_id: user_id,
+            item_id: item_id,
+            item_type: item_type,
         });
-        await newLibraryItem.save();
+        
 
-        sendSuccess(res, 201, newLibraryItem, 'Item added to library successfully.');
+        sendSuccess(res, 201, {}, 'Item added to library successfully.');
     } catch (error) {
         if (error.code === 11000) {
             return sendSuccess(res, 200, null, 'Item already in library (concurrent add).');
