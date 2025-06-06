@@ -13,6 +13,7 @@ import {
   searchMusic, 
   listNewMusic,
   listArtistMusic,
+  listRecentMusic,
 } from "../controllers/musicController.js";
 import { searchMusicValidation } from "../validators/musicValidators.js"; 
 
@@ -41,6 +42,13 @@ router.post(
 
 // API get all music (lists new music)
 router.get("/list", listNewMusic);
+
+// list user's recently played music
+router.get(
+  "/list/recent",
+  protect, 
+  listRecentMusic
+); 
 
 router.get("/list-music-user",protect,listArtistMusic)
 

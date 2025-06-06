@@ -14,7 +14,7 @@ const userLibraryItemSchema = new Schema({
     added_date: { type: Date, required: true, default: Date.now, index: true },
 }, { timestamps: true });
 
-userLibraryItemSchema.index({ user_id: 1, item_id: 1, item_type: 1 }, { unique: true });
+userLibraryItemSchema.index({ user_id: 1, item_id: 1, item_type: 1 });
 
 const UserLibraryItem = mongoose.model('UserLibraryItem', userLibraryItemSchema);
 
