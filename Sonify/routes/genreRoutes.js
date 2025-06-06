@@ -7,7 +7,6 @@ import { protect, authorize } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
-// POST /api/v1/genres - Create a new genre
 router.post(
     '/',
     protect,
@@ -17,7 +16,6 @@ router.post(
     createGenre
 );
 
-// Future: GET /api/v1/genres - List all genres (public or protected)
 router.get('/list', listGenre);
 
 export default router;

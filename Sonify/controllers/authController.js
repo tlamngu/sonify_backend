@@ -74,7 +74,7 @@ export const requestVerification = async (req, res, next) => {
           username: user.username,
           validateURL: verificationUrl,
           toEmail: user.email,
-          logoUrl: 'https://sonify.zeaky.dev/logo.png',
+          logoUrl: 'https://res.cloudinary.com/dho0jgfpy/image/upload/v1749214591/SonifyPreview_mbewmi.png',
         })
         sendSuccess(
             res,
