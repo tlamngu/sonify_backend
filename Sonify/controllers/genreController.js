@@ -25,3 +25,11 @@ export const createGenre = async (req, res, next) => {
         next(error);
     }
 };
+export const listGenre = async (req,res)=>{
+    try{
+        const genre=await Genre.find().select('_id name').lean()
+        sendSuccess(res,201,genre, "List Genre")
+    }catch(err){
+        return sendError(res,500,"Fail to get list genre")
+    }
+}
