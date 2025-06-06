@@ -27,11 +27,9 @@ export const listUsers = async (req, res, next) => {
             }
         }
         if (username) {
-            // Case-insensitive search for username containing the query string
             filter.username = { $regex: username, $options: 'i' };
         }
          if (email) {
-            // Case-insensitive search for email containing the query string
             filter.email = { $regex: email, $options: 'i' };
         }
 

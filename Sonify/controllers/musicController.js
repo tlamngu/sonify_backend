@@ -816,3 +816,114 @@ export const listArtistMusic=async (req,res)=>{
         return res.status(500).json({ message: 'Internal Server Error User new music.' });
     }
 }
+
+
+
+export const listRecentMusic = async (req, res) => {
+    const userId = req.user._id; // Assuming protect middleware adds user to req
+    let { limit = 10, page = 1 } = req.query;
+
+    limit = parseInt(limit, 10);
+    page = parseInt(page, 10);
+
+    if (isNaN(limit) || limit <= 0 || limit > 50) { // Max limit 50, adjust as needed
+        return res.status(400).json({ message: 'Invalid limit parameter. Must be a positive number (max 50).' });
+    }
+    if (isNaN(page) || page <= 0) {
+        return res.status(400).json({ message: 'Invalid page parameter. Must be a positive number.' });
+    }
+
+    const skip = (page - 1) * limit;
+
+    try {
+        console.log(`Listing recent music for user: ${userId}, Page: ${page}, Limit: ${limit}`);
+
+        const aggregationPipeline = [
+            {
+                $match: { user_id: new mongoose.Types.ObjectId(userId) }
+            },
+            {
+                $sort: { last_played_at: -1 }
+            },
+            {
+                $lookup: {
+                    from: 'musics',
+                    localField: 'music_id',
+                    foreignField: '_id',
+                    as: 'musicDetails'
+                }
+            },
+            {
+                $unwind: '$musicDetails'
+            },
+            {
+                $match: { 'musicDetails.is_deleted': false }
+            },
+            {
+                $lookup: {
+                    from: 'albums',
+                    localField: 'musicDetails.album_id',
+                    foreignField: '_id',
+                    as: 'albumInfo'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$albumInfo',
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $project: {
+                    _id: '$musicDetails._id',
+                    title: '$musicDetails.title',
+                    cover_image: '$musicDetails.cover_image',
+                    duration_ms: '$musicDetails.duration_ms',
+                    primary_artist_name: { $ifNull: [{ $arrayElemAt: ['$musicDetails.collaborators.name', 0] }, 'N/A'] },
+                    like_count: '$musicDetails.like_count',
+                    play_count: '$musicDetails.play_count', 
+                    user_play_count: '$play_count', 
+                    last_played_at: '$last_played_at',
+                    created_at: '$musicDetails.createdAt', 
+                    album_name: { $ifNull: ['$albumInfo.name', null] },
+                }
+            },
+            {
+                $facet: {
+                    data: [
+                        { $skip: skip },
+                        { $limit: limit }
+                    ],
+                    totalCount: [
+                        { $count: 'count' }
+                    ]
+                }
+            }
+        ];
+
+        const results = await StreamTracking.aggregate(aggregationPipeline);
+
+        const musicData = results[0].data.map(item => ({
+            ...item,
+            playbackUrl: `/api/v1/music/stream/${item._id}` 
+        }));
+        
+        const totalItems = results[0].totalCount.length > 0 ? results[0].totalCount[0].count : 0;
+        const totalPages = Math.ceil(totalItems / limit);
+
+        return res.status(200).json({
+            message: 'Recently played music retrieved successfully',
+            data: musicData,
+            pagination: {
+                page,
+                limit,
+                totalPages,
+                totalItems
+            }
+        });
+
+    } catch (error) {
+        console.error(`Error fetching recent music for user ${userId}:`, error);
+        return res.status(500).json({ message: 'Internal Server Error fetching recent music.' });
+    }
+};
