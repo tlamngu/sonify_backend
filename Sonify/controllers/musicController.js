@@ -12,6 +12,7 @@ import Music from "../models/music.model.js"
 import StreamTracking from '../models/streamTracking.model.js';
 import { sendSuccess, sendError } from '../utils/responseUtils.js';
 import { console } from 'inspector';
+import Genre from '../models/genre.model.js';
 
 const pipeline = promisify(stream.pipeline);
 
@@ -37,7 +38,7 @@ export const uploadMusic = async (req, res) => {
              return res.status(400).json({ message: 'Invalid file type or missing file data. Only audio files are allowed.' });
         }
 
-        const {
+        let {
             title,
             collaborators,
             album_id,
@@ -131,7 +132,14 @@ export const uploadMusic = async (req, res) => {
             console.log("No additional collaborators array provided by client or invalid format.");
         }
         console.log(`Total collaborators processed: ${finalCollaborators.length}`);
-
+        if(typeof genre_id=='string'){
+            try{
+                genre_id=JSON.parse(genre_id)
+            }catch(err){
+                console.error("Cannot parse genre_id:", genre_id, err);
+                genre_id=[]
+            }
+        }
         const musicData = {
             title: title.trim(),
             album_id: album_id && mongoose.Types.ObjectId.isValid(album_id) ? album_id : null,
@@ -496,6 +504,45 @@ export const updateMusic = async (req, res) => {
         return res.status(500).json({ message: 'Internal Server Error during music update.' });
     }
 };
+export const changeMusicDetailManager = async (req, res) => {
+    try {
+        const { _id, title, genre, is_deleted } = req.body;
+
+        if (!_id) {
+            return res.status(400).json({ message: 'Music id is required' });
+        }
+        if (!title || !Array.isArray(genre) || typeof is_deleted !== 'boolean') {
+            return res.status(400).json({
+                message: 'Missing data music to change detail'
+            });
+        }
+        const updated = await Music.findByIdAndUpdate(
+            _id,
+            {
+                title,
+                genre_id: genre.map(item => item._id),
+                is_deleted,
+            },
+            { new: true } 
+        );
+
+        if (!updated) {
+            return res.status(404).json({ message: 'Music not found' });
+        }
+
+        return res.status(200).json({
+            message: 'Music updated successfully',
+            data: updated
+        });
+    } catch (error) {
+        console.error("Error updating music:", error);
+        return res.status(500).json({
+            message: "Fail to change music detail",
+            error
+        });
+    }
+};
+
 
 export const deleteMusic = async (req, res) => {
     const { id } = req.params;
@@ -783,7 +830,7 @@ export const listNewMusic = async (req, res) => {
 export const listArtistMusic=async (req,res)=>{
     try{
         const {limit=10,offset=0,sortBy,sortOrder}=req.query
-        const user_id=req.user
+        const user_id=req.user._id
         const limitNum=parseInt(limit,10)
         const offsetNum = parseInt(offset, 10);
         if (isNaN(limitNum) || limitNum <= 0 || limitNum > 30) {
@@ -793,19 +840,26 @@ export const listArtistMusic=async (req,res)=>{
             return res.status(400).json({ message: 'Invalid offset parameter. Must be a non-negative number.' });
         }
         console.log(`Fetching ${limitNum} newest music tracks.`);
-        const ArtistMusic = await Music.find({ is_deleted: false })
+        const ArtistMusic = await Music.find({"collaborators.0.user_id" : user_id})
         .sort({ createdAt: -1 })
         .skip(offsetNum)
         .limit(limitNum)
         .lean();
+
+        const allGenreId=ArtistMusic.flatMap(music=>Array.isArray(music.genre_id) ? music.genre_id : [])
+        const genres=await Genre.find({_id:{$in: allGenreId}}).select('_id name').lean()
+        const genreMap={}
+        genres.forEach(genre=>{
+            genreMap[genre._id.toString()]=genre.name
+        })
         const formattedResults = ArtistMusic.map(music => ({
             _id: music._id,
-            cover_image: music.cover_image,
             title: music.title,
-            genre: Array.isArray(music.genre) ? music.genre : [],
+            genre: Array.isArray(music.genre_id) ? music.genre_id.map(id=>({_id:id,name:genreMap[id.toString()]}) || id) : [],
             collaborators: Array.isArray(music.collaborators) ? music.collaborators : [],
-            content_type:(music.content_type && music.content_type.stream_pack) ? 'Music' : 'Poscast',
+            content_type:music.stream_pack ? 'Music' : 'Poscast',
             created_at: music.createdAt,
+            is_deleted:music.is_deleted
         }));
         return res.status(200).json({
             message: 'List Music successfully',
@@ -813,6 +867,36 @@ export const listArtistMusic=async (req,res)=>{
         });
     }catch(err){
         console.error('Error fetching user music:', err);
-        return res.status(500).json({ message: 'Internal Server Error User new music.' });
+        return res.status(500).json({ message: 'Internal Server Error User music.' });
+    }
+}
+export const ListMusic=async (req,res)=>{
+    try{
+        const {limit,offset,sortBy,sortOrder='desc'}=req.query
+        const limitNum=parseInt(limit,10)
+        const offsetNum=parseInt(offset,10)
+        const ListData=await Music.find().skip(offsetNum).limit(limitNum).select('_id stream_pack title genre_id is_deleted createdAt').lean()
+        const allGenreId=ListData.flatMap((item)=>Array.isArray(item.genre_id) ? item.genre_id : [])
+        const genres=await Genre.find({_id:{$in: allGenreId}}).select('_id name')
+        const genreMap={}
+        genres.forEach((genre)=>{
+            genreMap[genre._id.toString()]=genre.name
+        })
+        const formattedResults = ListData.map(music => ({
+            _id: music._id,
+            title: music.title,
+            genre: Array.isArray(music.genre_id) ? music.genre_id.map(id=>({_id:id,name:genreMap[id.toString()]}) || id) : [],
+            collaborators: Array.isArray(music.collaborators) ? music.collaborators : [],
+            content_type:music.stream_pack ? 'Music' : 'Poscast',
+            created_at: music.createdAt,
+            is_deleted:music.is_deleted
+        }));
+        return res.status(200).json({
+            message:'List Music successfully',
+            data:formattedResults
+        })
+    }catch(err){
+        console.error("Error fetch music list:", err)
+        return res.status(500).json({message: 'Internal Server Error music list '})
     }
 }

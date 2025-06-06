@@ -14,27 +14,16 @@ export const listUsers = async (req, res, next) => {
         const limit = parseInt(req.query.limit) || 10;
         const sortBy = req.query.sortBy || 'createdAt'; 
         const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1; 
-        const role = req.query.role;
-        const username = req.query.username;
-        const email = req.query.email;
+        const {username,email,role}=req.user;
 
         const filter = { is_deleted: false }; 
-        if (role) {
+        if (role && role=='admin') {
             if (VALID_ROLES.includes(role)) {
-                filter.role = role;
+                filter.role = {$ne:role};
             } else {
                 return sendError(res, 400, `Invalid role specified. Valid roles are: ${VALID_ROLES.join(', ')}.`);
             }
         }
-        if (username) {
-            // Case-insensitive search for username containing the query string
-            filter.username = { $regex: username, $options: 'i' };
-        }
-         if (email) {
-            // Case-insensitive search for email containing the query string
-            filter.email = { $regex: email, $options: 'i' };
-        }
-
 
         const sort = {};
         sort[sortBy] = sortOrder;
@@ -62,8 +51,8 @@ export const listUsers = async (req, res, next) => {
                 hasNextPage: page < totalPages,
                 hasPrevPage: page > 1,
             },
-            filters: { role, username, email },
-            sorting: { sortBy, sortOrder },
+            // filters: { role, username, email },
+            // sorting: { sortBy, sortOrder },
         }, 'Users retrieved successfully.');
 
     } catch (error) {
@@ -286,5 +275,45 @@ export const deleteUser = async (req, res, next) => {
     } catch (error) {
         console.error(`Error deleting user ${userID}:`, error);
         next(error);
+    }
+};
+export const changeUserDetailManager = async (req, res) => {
+    try {
+        const { _id, username, role } = req.body;
+
+        if (!_id || !username || !role) {
+            return res.status(400).json({
+                message: "Missing required fields: _id, username, or role."
+            });
+        }
+
+        const VALID_ROLES = ['user', 'artist', 'admin'];
+        if (!VALID_ROLES.includes(role)) {
+            return res.status(400).json({
+                message: `Invalid role. Valid roles are: ${VALID_ROLES.join(', ')}.`
+            });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            _id,
+            { username, role },
+            { new: true }
+        ).select('-_id -password_hash -access_tokens');
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        return res.status(200).json({
+            message: "User details updated successfully.",
+            data: updatedUser
+        });
+
+    } catch (err) {
+        console.error("Error updating user detail:", err);
+        res.status(500).json({
+            message: "Failed to update user detail.",
+            error: err.message
+        });
     }
 };

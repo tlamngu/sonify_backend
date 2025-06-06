@@ -13,6 +13,8 @@ import {
   searchMusic, 
   listNewMusic,
   listArtistMusic,
+  ListMusic,
+  changeMusicDetailManager,
 } from "../controllers/musicController.js";
 import { searchMusicValidation } from "../validators/musicValidators.js"; 
 
@@ -41,8 +43,8 @@ router.post(
 
 // API get all music (lists new music)
 router.get("/list", listNewMusic);
-
-router.get("/list-music-user",protect,listArtistMusic)
+router.get("/list-music",protect,authorize("admin"),ListMusic)
+router.get("/list-music-user",protect,authorize("admin", "artist"),listArtistMusic)
 
 router.get(
     "/search",
@@ -58,7 +60,12 @@ router.put(
     authorize("admin", "artist"),
     updateMusic
 );
-
+router.put(
+  "/change-detail",
+  protect,
+  authorize("admin","artist"),
+  changeMusicDetailManager
+)
 // API delete music
 router.delete(
   "/delete/:id",
