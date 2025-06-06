@@ -1,4 +1,3 @@
-// In: ../controllers/genreController.js
 import Genre from '../models/genre.model.js';
 import { sendSuccess, sendError } from '../utils/responseUtils.js';
 
