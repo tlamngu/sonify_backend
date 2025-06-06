@@ -1,9 +1,9 @@
 import mongoose from 'mongoose';
-import User from '../models/user.model.js'; 
-import Artist from '../models/artist.model.js'; 
-import UserSettings from '../models/userSettings.model.js'; 
+import User from '../models/user.model.js';
+import Artist from '../models/artist.model.js';
+import UserSettings from '../models/userSettings.model.js';
 import { sendSuccess, sendError } from '../utils/responseUtils.js';
-import { sanitizeUserOutput } from '../utils/sanitizeUser.js'; 
+import { sanitizeUserOutput } from '../utils/sanitizeUser.js';
 import { uploadImagetoCloudinary } from '../utils/cdnUtils.js';
 
 const VALID_ROLES = ['user', 'admin', 'moderator', 'artist'];
@@ -12,27 +12,42 @@ export const listUsers = async (req, res, next) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
-        const sortBy = req.query.sortBy || 'createdAt'; 
-        const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1; 
-        const role = req.query.role;
-        const username = req.query.username;
-        const email = req.query.email;
+        const sortBy = req.query.sortBy || 'createdAt';
+        const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
 
-        const filter = { is_deleted: false }; 
-        if (role) {
-            if (VALID_ROLES.includes(role)) {
-                filter.role = role;
+        const { role: requestUserRole } = req.user; // Role of the user making the request
+        const {
+            role: roleQueryParam,        // from req.query.role for explicit filtering
+            username: usernameQueryParam, // from req.query.username for searching
+            email: emailQueryParam        // from req.query.email for searching
+        } = req.query;
+
+        const filter = { is_deleted: false };
+
+        // Default behavior from 'thanh' branch logic: if the requesting user is an admin,
+        // the list should exclude other admins by default.
+        if (requestUserRole === 'admin') {
+            filter.role = { $ne: 'admin' };
+        }
+
+        // Allow explicit role filtering via query parameter.
+        // This can be used by an admin to override the default (e.g., to see other admins)
+        // or by any user to filter by a specific role.
+        if (roleQueryParam) {
+            if (VALID_ROLES.includes(roleQueryParam)) {
+                filter.role = roleQueryParam; // This will override the {$ne: 'admin'} if admin queries for a specific role.
             } else {
-                return sendError(res, 400, `Invalid role specified. Valid roles are: ${VALID_ROLES.join(', ')}.`);
+                return sendError(res, 400, `Invalid role specified for filtering. Valid roles are: ${VALID_ROLES.join(', ')}.`);
             }
         }
-        if (username) {
-            filter.username = { $regex: username, $options: 'i' };
-        }
-         if (email) {
-            filter.email = { $regex: email, $options: 'i' };
-        }
 
+        // 'main' branch logic (corrected to use query parameters for searching)
+        if (usernameQueryParam) {
+            filter.username = { $regex: usernameQueryParam, $options: 'i' };
+        }
+        if (emailQueryParam) {
+            filter.email = { $regex: emailQueryParam, $options: 'i' };
+        }
 
         const sort = {};
         sort[sortBy] = sortOrder;
@@ -46,7 +61,7 @@ export const listUsers = async (req, res, next) => {
             .limit(limit)
             .select('-password_hash -access_tokens');
 
-        const sanitizedUsers = users.map(user => sanitizeUserOutput(user)); 
+        const sanitizedUsers = users.map(user => sanitizeUserOutput(user));
 
         const totalPages = Math.ceil(totalUsers / limit);
 
@@ -60,13 +75,13 @@ export const listUsers = async (req, res, next) => {
                 hasNextPage: page < totalPages,
                 hasPrevPage: page > 1,
             },
-            filters: { role, username, email },
-            sorting: { sortBy, sortOrder },
+            // filters: { role: roleQueryParam, username: usernameQueryParam, email: emailQueryParam }, // Example if you want to return active filters
+            // sorting: { sortBy, sortOrder },
         }, 'Users retrieved successfully.');
 
     } catch (error) {
         console.error("Error listing users:", error);
-        next(error); 
+        next(error);
     }
 };
 
@@ -86,7 +101,7 @@ export const updateUserRole = async (req, res, next) => {
         return sendError(res, 403, 'Admins cannot change their own role via this endpoint.');
     }
 
-    let artistProfileStatus = null; 
+    let artistProfileStatus = null;
 
     try {
         const user = await User.findOne({ _id: userID, is_deleted: false });
@@ -104,7 +119,7 @@ export const updateUserRole = async (req, res, next) => {
         }
 
         user.role = newRole;
-        await user.save(); 
+        await user.save();
 
         if (newRole === 'artist' && oldRole !== 'artist') {
             console.log(`User ${userID} role changed to 'artist'. Checking/creating artist profile.`);
@@ -168,7 +183,7 @@ export const updateUserRole = async (req, res, next) => {
 
         sendSuccess(res, 200, 'User role updated successfully.', {
              user: sanitizeUserOutput(user),
-             artistProfileStatus: artistProfileStatus 
+             artistProfileStatus: artistProfileStatus
         });
 
     } catch (error) {
@@ -183,11 +198,14 @@ export const updateUserRole = async (req, res, next) => {
 
 export const editUserProfile = async (req, res, next) => {
     const { userID } = req.params;
-    const adminUserId = req.user._id;
-    if(!req.file.buffer || !req.file.mimetype || !req.file.mimetype.startsWith('image/')){
-        console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.file.mimetype}`);
-        return res.status(400).json({message: 'Invalid file type or missing file data. Only image files are allowed.'})
+    const adminUserId = req.user._id; // Not used in current logic but kept for context
+
+    // Validate file presence and type
+    if (!req.file || !req.file.buffer || !req.file.mimetype || !req.file.mimetype.startsWith('image/')) {
+        console.warn(`Invalid file or mimetype uploaded by ${req.user.username}: ${req.file ? req.file.mimetype : 'No file'}`);
+        return sendError(res, 400, 'Invalid file type or missing file data. Only image files are allowed.');
     }
+
     if (!mongoose.Types.ObjectId.isValid(userID)) {
         return sendError(res, 400, 'Invalid User ID format.');
     }
@@ -195,24 +213,35 @@ export const editUserProfile = async (req, res, next) => {
     const allowedUpdates = [
         'username',
         'phone_number',
-        'profile_image_path',
-        'is_email_verified' 
+        // 'profile_image_path', // This will be set from Cloudinary result
+        'is_email_verified'
     ];
     const updates = {};
     Object.keys(req.body).forEach((key) => {
         if (allowedUpdates.includes(key)) {
-            updates[key] = req.body[key];
+            if (req.body[key] !== undefined && req.body[key] !== null) { // Ensure value is provided
+                 updates[key] = req.body[key];
+            }
         }
     });
-    const folderImagePath =`image/${userID}`
-    const cloudinaryImageResult=await uploadImagetoCloudinary(req.file,folderImagePath)
-    console.log("Cloudinary Upload Image Success: ",cloudinaryImageResult.public_id)
-    updates.profile_image_path=cloudinaryImageResult.url
-    if (Object.keys(updates).length === 0) {
-        return sendError(res, 400, 'No valid fields provided for update.', { allowedFields: allowedUpdates });
-    }
 
     try {
+        const folderImagePath = `image/${userID}`;
+        const cloudinaryImageResult = await uploadImagetoCloudinary(req.file, folderImagePath);
+        console.log("Cloudinary Upload Image Success: ", cloudinaryImageResult.public_id);
+        updates.profile_image_path = cloudinaryImageResult.url;
+
+        if (Object.keys(updates).length === 0 && !updates.profile_image_path) { // Check if only profile image was to be updated
+             return sendError(res, 400, 'No valid fields provided for update, or only profile image was updated which is handled.', { allowedFields: allowedUpdates });
+        }
+         if (Object.keys(updates).length === 1 && updates.profile_image_path) {
+            // This case means only profile_image_path was updated, which is fine.
+            // The previous check was too strict.
+        } else if (Object.keys(updates).length === 0) {
+             return sendError(res, 400, 'No valid fields provided for update.', { allowedFields: allowedUpdates });
+        }
+
+
         const user = await User.findOne({ _id: userID, is_deleted: false });
 
         if (!user) {
@@ -229,7 +258,7 @@ export const editUserProfile = async (req, res, next) => {
 
     } catch (error) {
         console.error(`Error editing profile for user ${userID}:`, error);
-        if (error.code === 11000) { 
+        if (error.code === 11000) {
             const field = Object.keys(error.keyPattern)[0];
              return sendError(res, 409, `Update failed: The ${field} '${error.keyValue[field]}' is already in use.`);
         }
@@ -260,11 +289,12 @@ export const deleteUser = async (req, res, next) => {
             return sendError(res, 403, 'Cannot delete another admin account.');
         }
 
+        const suffix = `_deleted_${Date.now()}`;
         user.is_deleted = true;
-        user.email = `${user.email}_deleted_${Date.now()}`; // Obfuscate unique fields if necessary
-        user.username = `${user.username}_deleted_${Date.now()}`; // Handle potential unique constraint on re-registration
+        user.email = `${user.email}${suffix}`;
+        user.username = `${user.username}${suffix}`;
         if(user.phone_number) {
-            user.phone_number = `${user.phone_number}_deleted_${Date.now()}`;
+            user.phone_number = `${user.phone_number}${suffix}`;
         }
 
         if (user.access_tokens && user.access_tokens.length > 0) {
@@ -273,9 +303,13 @@ export const deleteUser = async (req, res, next) => {
             });
         }
         await user.save();
+
         if (user.role === 'artist') {
-            await Artist.updateOne({ user_id: userID }, { $set: { is_deleted: true, name: `${Artist.name}_deleted_${Date.now()}` } }); // Also handle unique name
-             console.log(`Soft deleted associated artist profile for user ${userID}`);
+            const artistProfile = await Artist.findOne({ user_id: userID });
+            if (artistProfile) {
+                await Artist.updateOne({ user_id: userID }, { $set: { is_deleted: true, name: `${artistProfile.name}${suffix}` } });
+                console.log(`Soft deleted associated artist profile for user ${userID}`);
+            }
         }
         await UserSettings.updateOne({ user_id: userID }, { $set: { /* maybe clear preferences or mark as inactive */ } });
          console.log(`Handled user settings for deleted user ${userID}`);
@@ -284,5 +318,83 @@ export const deleteUser = async (req, res, next) => {
     } catch (error) {
         console.error(`Error deleting user ${userID}:`, error);
         next(error);
+    }
+};
+
+export const changeUserDetailManager = async (req, res) => {
+    try {
+        const { _id, username, role } = req.body;
+
+        if (!_id || !username || !role) {
+            return sendError(res, 400, "Missing required fields: _id, username, or role.");
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(_id)) {
+            return sendError(res, 400, 'Invalid User ID format for _id field.');
+        }
+
+        // Use the global VALID_ROLES
+        if (!VALID_ROLES.includes(role)) {
+            return sendError(res, 400, `Invalid role. Valid roles are: ${VALID_ROLES.join(', ')}.`);
+        }
+
+        const userToUpdate = await User.findById(_id);
+
+        if (!userToUpdate) {
+            return sendError(res, 404, "User not found.");
+        }
+
+        // Prevent admin from changing their own role this way or demoting last admin (add more robust checks if needed)
+        if (userToUpdate._id.toString() === req.user._id.toString() && userToUpdate.role === 'admin' && role !== 'admin') {
+            return sendError(res, 403, "Admins cannot change their own role to a non-admin role via this endpoint.");
+        }
+        
+        // Add additional logic if there's a need to manage artist profile based on role change here as well
+        const oldRole = userToUpdate.role;
+
+        userToUpdate.username = username;
+        userToUpdate.role = role;
+
+        const updatedUser = await userToUpdate.save();
+
+
+        // Handle artist profile changes if role changes to/from artist (similar to updateUserRole)
+        let artistProfileStatus = null;
+        if (role === 'artist' && oldRole !== 'artist') {
+            // Logic to check/create artist profile
+            let artistProfile = await Artist.findOne({ user_id: updatedUser._id });
+            if (!artistProfile) {
+                const defaultArtistName = updatedUser.username;
+                const nameExists = await Artist.findOne({ name: defaultArtistName, is_deleted: false });
+                if (!nameExists) {
+                    await Artist.create({ user_id: updatedUser._id, name: defaultArtistName });
+                    artistProfileStatus = `Created artist profile for ${updatedUser.username}.`;
+                } else {
+                    artistProfileStatus = `Artist profile not auto-created for ${updatedUser.username}, name taken. Manual creation needed.`;
+                }
+            } else if (artistProfile.is_deleted) {
+                artistProfile.is_deleted = false;
+                await artistProfile.save();
+                artistProfileStatus = `Reactivated artist profile for ${updatedUser.username}.`;
+            }
+        } else if (oldRole === 'artist' && role !== 'artist') {
+            // Logic to soft-delete artist profile
+            await Artist.updateOne({ user_id: updatedUser._id, is_deleted: false }, { $set: { is_deleted: true }});
+            artistProfileStatus = `Soft-deleted artist profile for ${updatedUser.username} due to role change.`;
+        }
+
+
+        sendSuccess(res, 200, 'User details updated successfully.', {
+            user: sanitizeUserOutput(updatedUser),
+            artistProfileStatus: artistProfileStatus
+        });
+
+    } catch (err) {
+        console.error("Error updating user detail:", err);
+        if (err.code === 11000) { // Handle duplicate key errors (e.g. username already taken)
+            const field = Object.keys(err.keyPattern)[0];
+            return sendError(res, 409, `Update failed: The ${field} '${err.keyValue[field]}' is already in use.`);
+        }
+        sendError(res, 500, "Failed to update user detail.", err.message);
     }
 };

@@ -8,6 +8,7 @@ import {
   updateUserRole,
   editUserProfile,
   deleteUser,
+  changeUserDetailManager,
 } from "../controllers/userController.js";
 import multer from "multer";
 
@@ -22,6 +23,8 @@ const router = express.Router();
 router.get("/lists", protect, authorize("admin"), listUsers);
 
 router.put("/role/:userID", protect, authorize("admin"), updateUserRole);
+
+router.put("/change-detail",protect,authorize("admin"),changeUserDetailManager)
 
 router.put("/edit/:userID", protect, authorize("admin"),upload.single("coverImage") ,editUserProfile);
 

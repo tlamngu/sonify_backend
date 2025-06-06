@@ -1,6 +1,6 @@
 // In: ../routes/genreRoutes.js
 import express from 'express';
-import { createGenre } from '../controllers/genreController.js';
+import { createGenre, listGenre } from '../controllers/genreController.js';
 import { createGenreValidation } from '../validators/genreValidators.js';
 import { validateRequest } from '../middlewares/validateRequest.js';
 import { protect, authorize } from '../middlewares/authMiddleware.js';
@@ -18,6 +18,6 @@ router.post(
 );
 
 // Future: GET /api/v1/genres - List all genres (public or protected)
-// router.get('/', listGenres);
+router.get('/list', listGenre);
 
 export default router;
